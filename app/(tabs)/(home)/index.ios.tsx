@@ -18,7 +18,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BACKEND_URL } from '@/utils/api';
+import { BACKEND_URL, authenticatedPost, getBearerToken } from '@/utils/api';
 
 interface ImageData {
   uri: string;
@@ -110,11 +110,14 @@ export default function HomeScreen() {
     
     formData.append('image', file);
     
+    const token = await getBearerToken();
+    
     const response = await fetch(`${BACKEND_URL}/api/upload/image`, {
       method: 'POST',
       body: formData,
       headers: {
         'Accept': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
       },
     });
     
@@ -152,29 +155,16 @@ export default function HomeScreen() {
       console.log('[API] Compare1:', compareImage1Url);
       console.log('[API] Compare2:', compareImage2Url);
       
-      console.log('[API] Requesting comparison...');
-      const response = await fetch(`${BACKEND_URL}/api/compare`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          mainImageUrl,
-          mainImageLabel: mainImage.label || 'Principale',
-          compareImage1Url,
-          compareImage1Label: compareImage1.label || 'Foto 1',
-          compareImage2Url,
-          compareImage2Label: compareImage2.label || 'Foto 2',
-        }),
+      console.log('[API] Requesting comparison with authenticated API...');
+      const result = await authenticatedPost('/api/compare', {
+        mainImageUrl,
+        mainImageLabel: mainImage.label || 'Principale',
+        compareImage1Url,
+        compareImage1Label: compareImage1.label || 'Foto 1',
+        compareImage2Url,
+        compareImage2Label: compareImage2.label || 'Foto 2',
       });
       
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[API] Comparison error:', response.status, errorText);
-        throw new Error(`Comparison failed: ${response.status}`);
-      }
-      
-      const result = await response.json();
       console.log('[API] Comparison result:', result);
       
       console.log('Analysis complete, navigating to results');
