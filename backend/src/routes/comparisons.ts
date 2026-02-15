@@ -6,6 +6,19 @@ import { z } from 'zod';
 import * as schema from '../db/schema.js';
 import type { App } from '../index.js';
 
+// Helper function to fetch image and convert to base64
+async function fetchImageAsBase64(imageUrl: string): Promise<string> {
+  const response = await fetch(imageUrl);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch image: ${response.statusText}`);
+  }
+
+  const buffer = await response.arrayBuffer();
+  const base64 = Buffer.from(buffer).toString('base64');
+
+  return base64;
+}
+
 export function registerComparisonsRoutes(app: App) {
   const requireAuth = app.requireAuth();
 
@@ -82,6 +95,18 @@ export function registerComparisonsRoutes(app: App) {
       );
 
       try {
+        // Fetch and convert all images to base64
+        app.logger.info({ mainImageLabel }, 'Fetching main image');
+        const mainImageBase64 = await fetchImageAsBase64(mainImageUrl);
+
+        app.logger.info({ compareImage1Label }, 'Fetching comparison image 1');
+        const compareImage1Base64 = await fetchImageAsBase64(compareImage1Url);
+
+        app.logger.info({ compareImage2Label }, 'Fetching comparison image 2');
+        const compareImage2Base64 = await fetchImageAsBase64(compareImage2Url);
+
+        app.logger.info({}, 'Images fetched successfully, starting analysis');
+
         // Use Gemini for vision analysis
         const comparisonSchema = z.object({
           winner: z.number().int().min(1).max(2),
@@ -131,9 +156,18 @@ Return your analysis as JSON with:
 
 Format your response as valid JSON only, no additional text.`,
                 },
-                { type: 'image', image: mainImageUrl },
-                { type: 'image', image: compareImage1Url },
-                { type: 'image', image: compareImage2Url },
+                {
+                  type: 'image',
+                  image: mainImageBase64,
+                },
+                {
+                  type: 'image',
+                  image: compareImage1Base64,
+                },
+                {
+                  type: 'image',
+                  image: compareImage2Base64,
+                },
               ],
             },
           ],
