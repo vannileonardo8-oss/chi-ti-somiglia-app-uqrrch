@@ -170,9 +170,10 @@ export default function HomeScreen() {
       
       console.log('Analysis complete, navigating to results');
       router.push(`/results/${result.comparisonId}`);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error analyzing images:', error);
-      showError('Si è verificato un errore durante l\'analisi. Riprova.');
+      const errorMessage = error?.message || 'Si è verificato un errore durante l\'analisi. Riprova.';
+      showError(errorMessage);
     } finally {
       setIsAnalyzing(false);
     }
