@@ -97,34 +97,25 @@ export default function HomeScreen() {
   const uploadImage = async (imageUri: string): Promise<string> => {
     console.log('[API] Uploading image:', imageUri);
     
+    const response = await fetch(imageUri);
+    const blob = await response.blob();
+    
     const formData = new FormData();
-    
-    const uriParts = imageUri.split('.');
-    const fileType = uriParts[uriParts.length - 1];
-    
-    const file: any = {
-      uri: imageUri,
-      name: `photo.${fileType}`,
-      type: `image/${fileType}`,
-    };
-    
+    const file = new File([blob], 'photo.jpg', { type: blob.type || 'image/jpeg' });
     formData.append('image', file);
     
-    const response = await fetch(`${BACKEND_URL}/api/upload/image`, {
+    const uploadResponse = await fetch(`${BACKEND_URL}/api/upload/image`, {
       method: 'POST',
       body: formData,
-      headers: {
-        'Accept': 'application/json',
-      },
     });
     
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('[API] Upload error:', response.status, errorText);
-      throw new Error(`Upload failed: ${response.status}`);
+    if (!uploadResponse.ok) {
+      const errorText = await uploadResponse.text();
+      console.error('[API] Upload error:', uploadResponse.status, errorText);
+      throw new Error(`Upload failed: ${uploadResponse.status}`);
     }
     
-    const data = await response.json();
+    const data = await uploadResponse.json();
     console.log('[API] Upload success:', data);
     return data.url;
   };
@@ -367,6 +358,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 20,
+    paddingTop: 0,
   },
   header: {
     marginBottom: 32,
