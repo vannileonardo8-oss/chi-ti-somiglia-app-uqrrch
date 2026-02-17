@@ -219,24 +219,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.log(`📱 [AuthContext] Native OAuth callback URL:`, callbackURL);
         console.log(`📱 [AuthContext] This URL will receive the token as a query parameter`);
         
-        try {
-          await authClient.signIn.social({
-            provider,
-            callbackURL,
-          });
-        } catch (oauthError: any) {
-          console.error(`❌ [AuthContext] OAuth initiation error:`, oauthError);
-          oauthInProgressRef.current = null;
-          // If the OAuth initiation itself fails, throw immediately
-          throw new Error(`Impossibile avviare l'autenticazione con ${provider}. Riprova.`);
-        }
+        // Call the Better Auth social sign-in method
+        // This will open the browser and redirect to the OAuth provider
+        await authClient.signIn.social({
+          provider,
+          callbackURL,
+        });
         
-        console.log(`✅ [AuthContext] ${provider} OAuth initiated, waiting for callback...`);
-        console.log(`⏳ [AuthContext] The backend will redirect to: ${callbackURL}?token=SESSION_TOKEN`);
+        console.log(`✅ [AuthContext] ${provider} OAuth initiated successfully`);
+        console.log(`⏳ [AuthContext] Waiting for OAuth callback...`);
         
         // Wait for the deep link to be processed
         // The deep link listener will handle the token and call fetchUser
-        const maxWaitTime = 30000; // 30 seconds max wait
+        const maxWaitTime = 60000; // 60 seconds max wait (increased from 30)
         const checkInterval = 500; // Check every 500ms
         const maxChecks = maxWaitTime / checkInterval;
         
@@ -248,6 +243,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             console.log(`✅ [AuthContext] ${provider} OAuth successful! User logged in:`, userRef.current.email);
             oauthInProgressRef.current = null;
             return;
+          }
+          
+          // Log progress every 5 seconds
+          if (i % 10 === 0 && i > 0) {
+            console.log(`⏳ [AuthContext] Still waiting for OAuth callback... (${i * checkInterval / 1000}s elapsed)`);
           }
         }
         

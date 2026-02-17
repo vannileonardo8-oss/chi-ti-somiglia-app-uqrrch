@@ -1,3 +1,4 @@
+
 import React, { useState } from "react";
 import {
   View,
@@ -36,6 +37,7 @@ export default function AuthScreen() {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#007AFF" />
+        <Text style={styles.loadingText}>Caricamento...</Text>
       </View>
     );
   }
@@ -189,7 +191,11 @@ export default function AuthScreen() {
             onPress={() => handleSocialAuth("google")}
             disabled={loading}
           >
-            <Text style={styles.socialButtonText}>Continua con Google</Text>
+            {loading ? (
+              <ActivityIndicator color="#000" />
+            ) : (
+              <Text style={styles.socialButtonText}>Continua con Google</Text>
+            )}
           </TouchableOpacity>
 
           {Platform.OS === "ios" && (
@@ -198,9 +204,13 @@ export default function AuthScreen() {
               onPress={() => handleSocialAuth("apple")}
               disabled={loading}
             >
-              <Text style={[styles.socialButtonText, styles.appleButtonText]}>
-                Continua con Apple
-              </Text>
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={[styles.socialButtonText, styles.appleButtonText]}>
+                  Continua con Apple
+                </Text>
+              )}
             </TouchableOpacity>
           )}
         </View>
@@ -240,6 +250,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: "#fff",
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: "#666",
   },
   scrollContent: {
     flexGrow: 1,
