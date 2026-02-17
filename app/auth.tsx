@@ -45,6 +45,11 @@ export default function AuthScreen() {
     setModal({ visible: true, title, message });
   };
 
+  const handleSkip = () => {
+    console.log("⏭️ User skipped authentication");
+    router.replace("/(tabs)/(home)");
+  };
+
   const handleEmailAuth = async () => {
     if (!email || !password) {
       showModal("Errore", "Inserisci email e password");
@@ -53,15 +58,19 @@ export default function AuthScreen() {
 
     setLoading(true);
     try {
+      console.log(`📧 Attempting ${mode} with email:`, email);
       if (mode === "signin") {
         await signInWithEmail(email, password);
+        console.log("✅ Email sign in successful");
         router.replace("/(tabs)/(home)");
       } else {
         await signUpWithEmail(email, password, name);
+        console.log("✅ Email sign up successful");
         showModal("Successo", "Account creato! Controlla la tua email per verificare l'account.");
         router.replace("/(tabs)/(home)");
       }
     } catch (error: any) {
+      console.error(`❌ Email ${mode} failed:`, error);
       showModal("Errore", error.message || "Autenticazione fallita");
     } finally {
       setLoading(false);
@@ -71,11 +80,14 @@ export default function AuthScreen() {
   const handleSocialAuth = async (provider: "google" | "apple") => {
     setLoading(true);
     try {
+      console.log(`🔐 Attempting ${provider} authentication...`);
       if (provider === "google") {
         await signInWithGoogle();
       } else if (provider === "apple") {
         await signInWithApple();
       }
+      
+      console.log(`✅ ${provider} authentication initiated`);
       
       // On web, navigation happens after popup closes
       // On native, navigation happens after deep link callback
@@ -83,6 +95,7 @@ export default function AuthScreen() {
         router.replace("/(tabs)/(home)");
       }
     } catch (error: any) {
+      console.error(`❌ ${provider} authentication failed:`, error);
       showModal("Errore", error?.message || "Autenticazione fallita. Riprova.");
     } finally {
       setLoading(false);
@@ -188,6 +201,13 @@ export default function AuthScreen() {
               )}
             </TouchableOpacity>
           )}
+
+          <TouchableOpacity
+            style={styles.skipButton}
+            onPress={handleSkip}
+          >
+            <Text style={styles.skipButtonText}>Salta per ora</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
 
@@ -322,6 +342,16 @@ const styles = StyleSheet.create({
   },
   appleButtonText: {
     color: "#fff",
+  },
+  skipButton: {
+    marginTop: 24,
+    alignItems: "center",
+    paddingVertical: 12,
+  },
+  skipButtonText: {
+    color: "#999",
+    fontSize: 16,
+    textDecorationLine: "underline",
   },
   modalOverlay: {
     flex: 1,

@@ -50,7 +50,7 @@ function openOAuthPopup(provider: string): Promise<string> {
         clearInterval(checkClosed);
         resolve(event.data.token);
       } else if (event.data?.type === "oauth-error") {
-        window.removeEventListener("message", handleMessage);
+        window.removeEventListener(message", handleMessage);
         clearInterval(checkClosed);
         reject(new Error(event.data.error || "OAuth failed"));
       }
@@ -96,17 +96,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       if (session?.data?.user) {
         const userData = session.data.user as User;
+        console.log("✅ User session found:", userData.email);
         setUser(userData);
         // Sync token to SecureStore for API calls
         if (session.data.session?.token) {
           await setBearerToken(session.data.session.token);
         }
       } else {
+        console.log("❌ No user session found");
         setUser(null);
         await clearAuthTokens();
       }
     } catch (error) {
-      console.error("Failed to fetch user:", error);
+      console.error("❌ Failed to fetch user:", error);
       setUser(null);
     } finally {
       setLoading(false);
@@ -115,16 +117,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithEmail = async (email: string, password: string) => {
     try {
+      console.log("📧 Attempting email sign in:", email);
       await authClient.signIn.email({ email, password });
       await fetchUser();
     } catch (error) {
-      console.error("Email sign in failed:", error);
+      console.error("❌ Email sign in failed:", error);
       throw error;
     }
   };
 
   const signUpWithEmail = async (email: string, password: string, name?: string) => {
     try {
+      console.log("📧 Attempting email sign up:", email);
       await authClient.signUp.email({
         email,
         password,
@@ -132,13 +136,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       await fetchUser();
     } catch (error) {
-      console.error("Email sign up failed:", error);
+      console.error("❌ Email sign up failed:", error);
       throw error;
     }
   };
 
   const signInWithSocial = async (provider: "google" | "apple" | "github") => {
     try {
+      console.log(`🔐 Attempting ${provider} sign in...`);
+      
       if (Platform.OS === "web") {
         const token = await openOAuthPopup(provider);
         await setBearerToken(token);
@@ -146,14 +152,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         // Native: Use Better Auth's built-in OAuth flow
         const callbackURL = Linking.createURL("/");
+        console.log(`📱 Native OAuth callback URL: ${callbackURL}`);
+        
         await authClient.signIn.social({
           provider,
           callbackURL,
         });
+        
         // The deep link listener will handle the callback
+        console.log(`⏳ Waiting for OAuth callback...`);
       }
     } catch (error: any) {
-      console.error(`${provider} sign in failed:`, error);
+      console.error(`❌ ${provider} sign in failed:`, error);
       throw error;
     }
   };
@@ -164,12 +174,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     try {
+      console.log("🚪 Signing out...");
       await authClient.signOut();
     } catch (error) {
-      console.error("Sign out failed:", error);
+      console.error("❌ Sign out failed:", error);
     } finally {
       setUser(null);
       await clearAuthTokens();
+      console.log("✅ Signed out successfully");
     }
   };
 

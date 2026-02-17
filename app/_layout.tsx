@@ -33,21 +33,26 @@ export const unstable_settings = {
   initialRouteName: "(tabs)",
 };
 
-// Auth Guard Component
+// Auth Guard Component - Now allows skipping authentication
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
 
   useEffect(() => {
-    if (loading) return;
+    if (loading) {
+      console.log("⏳ Auth loading...");
+      return;
+    }
 
     const inAuthGroup = segments[0] === "auth" || segments[0] === "auth-popup" || segments[0] === "auth-callback";
+    const inProtectedRoute = segments[0] === "(tabs)" || segments[0] === "results";
 
-    if (!user && !inAuthGroup) {
-      console.log('🔒 User not authenticated, redirecting to /auth');
-      router.replace("/auth");
-    } else if (user && inAuthGroup) {
+    console.log("🔍 Auth check:", { user: user?.email || "none", inAuthGroup, inProtectedRoute, segments });
+
+    // Only redirect to auth if user explicitly tries to access protected routes
+    // For now, we allow access without authentication
+    if (user && inAuthGroup) {
       console.log('✅ User authenticated, redirecting to home');
       router.replace("/(tabs)/(home)");
     }
