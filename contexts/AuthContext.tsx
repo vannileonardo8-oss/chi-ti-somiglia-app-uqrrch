@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import React, { createContext, useContext, useState, useEffect, ReactNode, useRef } from "react";
 import { Platform } from "react-native";
 import * as Linking from "expo-linking";
 import { authClient, setBearerToken, clearAuthTokens } from "@/lib/auth";
@@ -71,6 +71,7 @@ function openOAuthPopup(provider: string): Promise<string> {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const userRef = useRef<User | null>(null);
 
   useEffect(() => {
     console.log(`🔐 [AuthContext] Initializing on ${Platform.OS}...`);
@@ -83,7 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setTimeout(() => {
         console.log("🔄 [AuthContext] Refreshing user session after deep link...");
         fetchUser();
-      }, 500);
+      }, 1500);
     });
 
     // POLLING: Refresh session every 5 minutes to keep SecureStore token in sync
@@ -107,7 +108,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       if (session?.data?.user) {
         console.log("✅ [AuthContext] User session found:", session.data.user.email);
-        setUser(session.data.user as User);
+        const userData = session.data.user as User;
+        setUser(userData);
+        userRef.current = userData;
         // Sync token to SecureStore for utils/api.ts
         if (session.data.session?.token) {
           await setBearerToken(session.data.session.token);
@@ -116,11 +119,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         console.log("❌ [AuthContext] No user session found");
         setUser(null);
+        userRef.current = null;
         await clearAuthTokens();
       }
     } catch (error) {
       console.error("❌ [AuthContext] Failed to fetch user:", error);
       setUser(null);
+      userRef.current = null;
     } finally {
       setLoading(false);
       console.log("✅ [AuthContext] Loading complete");
@@ -173,15 +178,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
         
         console.log(`✅ [AuthContext] ${provider} OAuth initiated, waiting for callback...`);
-        console.log(`⏳ [AuthContext] Waiting 3 seconds for OAuth redirect to complete...`);
         
-        // Wait a bit for the OAuth flow to complete and redirect back
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        // Retry logic: Try to fetch the session multiple times
+        const maxRetries = 5;
+        const retryDelay = 2000; // 2 seconds between retries
         
-        console.log(`🔄 [AuthContext] Fetching user session after OAuth...`);
-        await fetchUser();
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+          console.log(`⏳ [AuthContext] Waiting ${retryDelay}ms before checking session (attempt ${attempt}/${maxRetries})...`);
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+          
+          console.log(`🔄 [AuthContext] Fetching user session after OAuth (attempt ${attempt}/${maxRetries})...`);
+          await fetchUser();
+          
+          // Check if user was successfully fetched
+          if (userRef.current) {
+            console.log(`✅ [AuthContext] ${provider} OAuth successful! User logged in:`, userRef.current.email);
+            return;
+          }
+          
+          console.log(`⚠️ [AuthContext] No user found yet, will retry...`);
+        }
         
-        console.log(`✅ [AuthContext] ${provider} OAuth flow completed`);
+        // If we get here, all retries failed
+        console.error(`❌ [AuthContext] ${provider} OAuth failed after ${maxRetries} attempts`);
+        throw new Error(`Impossibile completare l'accesso con ${provider}. Riprova.`);
       }
     } catch (error: any) {
       console.error(`❌ [AuthContext] ${provider} sign in failed:`, error);
@@ -207,6 +227,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       // Always clear local state
       setUser(null);
+      userRef.current = null;
       await clearAuthTokens();
       console.log("✅ [AuthContext] Local auth state cleared");
     }
