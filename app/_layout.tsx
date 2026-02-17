@@ -1,3 +1,4 @@
+
 import "react-native-reanimated";
 import React, { useEffect } from "react";
 import { useFonts } from "expo-font";
@@ -19,7 +20,12 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 // Note: Error logging is auto-initialized via index.ts import
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
-SplashScreen.preventAutoHideAsync();
+// Wrap in try-catch to handle cases where splash screen isn't available
+try {
+  SplashScreen.preventAutoHideAsync();
+} catch (error) {
+  console.log('Splash screen not available:', error);
+}
 
 export const unstable_settings = {
   initialRouteName: "(tabs)", // Ensure any route can link back to `/`
@@ -66,7 +72,10 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (loaded) {
-      SplashScreen.hideAsync();
+      // Hide splash screen with error handling
+      SplashScreen.hideAsync().catch((error) => {
+        console.log('Error hiding splash screen:', error);
+      });
     }
   }, [loaded]);
 
@@ -117,6 +126,10 @@ export default function RootLayout() {
                   <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
                   {/* Main app with tabs */}
                   <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                  {/* Results screen */}
+                  <Stack.Screen name="results/[id]" options={{ headerShown: false }} />
+                  {/* 404 screen */}
+                  <Stack.Screen name="+not-found" options={{ title: "Oops!" }} />
                 </Stack>
                 <SystemBars style={"auto"} />
                 </GestureHandlerRootView>
