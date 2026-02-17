@@ -74,6 +74,7 @@ export default function AuthScreen() {
     setLoading(true);
     try {
       console.log(`🔐 [AuthScreen] Starting ${provider} authentication...`);
+      console.log(`📱 [AuthScreen] Platform: ${Platform.OS}`);
       
       if (provider === "google") {
         await signInWithGoogle();
@@ -87,6 +88,9 @@ export default function AuthScreen() {
       router.replace("/(tabs)/(home)");
     } catch (error: any) {
       console.error(`❌ [AuthScreen] ${provider} authentication failed:`, error);
+      console.error(`❌ [AuthScreen] Error type:`, typeof error);
+      console.error(`❌ [AuthScreen] Error message:`, error?.message);
+      console.error(`❌ [AuthScreen] Error stack:`, error?.stack);
       
       let errorMessage = "Autenticazione fallita. Riprova.";
       
@@ -96,6 +100,8 @@ export default function AuthScreen() {
         errorMessage = "Errore del server. Stiamo risolvendo il problema. Riprova tra qualche minuto.";
       } else if (error?.toString().includes("network")) {
         errorMessage = "Errore di connessione. Controlla la tua connessione internet.";
+      } else if (error?.toString().includes("timeout") || error?.toString().includes("Timeout")) {
+        errorMessage = "L'autenticazione sta richiedendo troppo tempo. Controlla la tua connessione e riprova.";
       }
       
       showModal("Errore di Autenticazione", errorMessage);

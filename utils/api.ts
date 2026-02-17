@@ -21,7 +21,7 @@ export async function getBearerToken(): Promise<string | null> {
   }
 }
 
-export async function apiGet(path: string) {
+export async function apiGet<T = any>(path: string): Promise<T> {
   const url = `${BACKEND_URL}${path}`;
   console.log(`[API] GET ${url}`);
   const response = await fetch(url);
@@ -33,7 +33,7 @@ export async function apiGet(path: string) {
   return response.json();
 }
 
-export async function apiPost(path: string, data: any) {
+export async function apiPost<T = any>(path: string, data: any): Promise<T> {
   const url = `${BACKEND_URL}${path}`;
   console.log(`[API] POST ${url}`, data);
   const response = await fetch(url, {
@@ -51,7 +51,7 @@ export async function apiPost(path: string, data: any) {
   return response.json();
 }
 
-export async function authenticatedGet(path: string) {
+export async function authenticatedGet<T = any>(path: string): Promise<T> {
   const token = await getBearerToken();
   const url = `${BACKEND_URL}${path}`;
   console.log(`[API] Authenticated GET ${url}`);
@@ -68,7 +68,7 @@ export async function authenticatedGet(path: string) {
   return response.json();
 }
 
-export async function authenticatedPost(path: string, data: any) {
+export async function authenticatedPost<T = any>(path: string, data: any): Promise<T> {
   const token = await getBearerToken();
   const url = `${BACKEND_URL}${path}`;
   console.log(`[API] Authenticated POST ${url}`, data);
@@ -88,7 +88,7 @@ export async function authenticatedPost(path: string, data: any) {
   return response.json();
 }
 
-export async function authenticatedPut(path: string, data: any) {
+export async function authenticatedPut<T = any>(path: string, data: any): Promise<T> {
   const token = await getBearerToken();
   const url = `${BACKEND_URL}${path}`;
   console.log(`[API] Authenticated PUT ${url}`, data);
@@ -108,7 +108,7 @@ export async function authenticatedPut(path: string, data: any) {
   return response.json();
 }
 
-export async function authenticatedDelete(path: string) {
+export async function authenticatedDelete<T = any>(path: string): Promise<T> {
   const token = await getBearerToken();
   const url = `${BACKEND_URL}${path}`;
   console.log(`[API] Authenticated DELETE ${url}`);
