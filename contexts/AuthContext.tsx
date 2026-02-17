@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { Platform } from "react-native";
 import * as Linking from "expo-linking";
@@ -72,19 +73,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    console.log(`🔐 [AuthContext] Initializing on ${Platform.OS}...`);
     fetchUser();
 
     // Listen for deep links (e.g. from social auth redirects)
     const subscription = Linking.addEventListener("url", (event) => {
-      console.log("Deep link received, refreshing user session");
+      console.log("🔗 [AuthContext] Deep link received:", event.url);
       // Allow time for the client to process the token if needed
-      setTimeout(() => fetchUser(), 500);
+      setTimeout(() => {
+        console.log("🔄 [AuthContext] Refreshing user session after deep link...");
+        fetchUser();
+      }, 500);
     });
 
     // POLLING: Refresh session every 5 minutes to keep SecureStore token in sync
     // This prevents 401 errors when the session token rotates
     const intervalId = setInterval(() => {
-      console.log("Auto-refreshing user session to sync token...");
+      console.log("⏰ [AuthContext] Auto-refreshing user session to sync token...");
       fetchUser();
     }, 5 * 60 * 1000); // 5 minutes
 
@@ -96,74 +101,83 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const fetchUser = async () => {
     try {
+      console.log("👤 [AuthContext] Fetching user session...");
       setLoading(true);
       const session = await authClient.getSession();
+      
       if (session?.data?.user) {
+        console.log("✅ [AuthContext] User session found:", session.data.user.email);
         setUser(session.data.user as User);
         // Sync token to SecureStore for utils/api.ts
         if (session.data.session?.token) {
           await setBearerToken(session.data.session.token);
+          console.log("🔑 [AuthContext] Bearer token synced to SecureStore");
         }
       } else {
+        console.log("❌ [AuthContext] No user session found");
         setUser(null);
         await clearAuthTokens();
       }
     } catch (error) {
-      console.error("Failed to fetch user:", error);
+      console.error("❌ [AuthContext] Failed to fetch user:", error);
       setUser(null);
     } finally {
       setLoading(false);
+      console.log("✅ [AuthContext] Loading complete");
     }
   };
 
   const signInWithEmail = async (email: string, password: string) => {
     try {
+      console.log("📧 [AuthContext] Signing in with email:", email);
       await authClient.signIn.email({ email, password });
       await fetchUser();
     } catch (error) {
-      console.error("Email sign in failed:", error);
+      console.error("❌ [AuthContext] Email sign in failed:", error);
       throw error;
     }
   };
 
   const signUpWithEmail = async (email: string, password: string, name?: string) => {
     try {
+      console.log("📝 [AuthContext] Signing up with email:", email);
       await authClient.signUp.email({
         email,
         password,
         name,
-        // Ensure name is passed in header or logic if required, usually passed in body
       });
       await fetchUser();
     } catch (error) {
-      console.error("Email sign up failed:", error);
+      console.error("❌ [AuthContext] Email sign up failed:", error);
       throw error;
     }
   };
 
   const signInWithSocial = async (provider: "google" | "apple" | "github") => {
     try {
+      console.log(`🔐 [AuthContext] Starting ${provider} sign in on ${Platform.OS}...`);
+      
       if (Platform.OS === "web") {
+        console.log(`🌐 [AuthContext] Opening ${provider} OAuth popup...`);
         const token = await openOAuthPopup(provider);
         await setBearerToken(token);
         await fetchUser();
       } else {
         // Native: Use expo-linking to generate a proper deep link
         const callbackURL = Linking.createURL("/(tabs)/(home)");
+        console.log(`📱 [AuthContext] Native OAuth callback URL:`, callbackURL);
+        
         await authClient.signIn.social({
           provider,
           callbackURL,
         });
-        // Note: The redirect will reload the app or be handled by deep linking.
-        // fetchUser will be called on mount or via event listener if needed.
-        // For simple flow, we might need to listen to URL events.
-        // But better-auth expo client handles the redirect and session storage?
-        // We typically need to wait or rely on fetchUser on next app load.
-        // For now, call fetchUser just in case.
+        
+        console.log(`✅ [AuthContext] ${provider} OAuth initiated, waiting for callback...`);
+        // The redirect will be handled by the deep link listener
         await fetchUser();
       }
     } catch (error) {
-      console.error(`${provider} sign in failed:`, error);
+      console.error(`❌ [AuthContext] ${provider} sign in failed:`, error);
       throw error;
     }
   };
@@ -174,13 +188,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     try {
+      console.log("🚪 [AuthContext] Signing out...");
       await authClient.signOut();
+      console.log("✅ [AuthContext] Sign out API call successful");
     } catch (error) {
-      console.error("Sign out failed (API):", error);
+      console.error("⚠️ [AuthContext] Sign out API failed (clearing local state anyway):", error);
     } finally {
-       // Always clear local state
-       setUser(null);
-       await clearAuthTokens();
+      // Always clear local state
+      setUser(null);
+      await clearAuthTokens();
+      console.log("✅ [AuthContext] Local auth state cleared");
     }
   };
 
