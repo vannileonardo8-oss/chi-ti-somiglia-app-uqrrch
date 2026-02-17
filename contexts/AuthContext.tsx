@@ -50,7 +50,7 @@ function openOAuthPopup(provider: string): Promise<string> {
         clearInterval(checkClosed);
         resolve(event.data.token);
       } else if (event.data?.type === "oauth-error") {
-        window.removeEventListener(message", handleMessage);
+        window.removeEventListener("message", handleMessage);
         clearInterval(checkClosed);
         reject(new Error(event.data.error || "OAuth failed"));
       }
