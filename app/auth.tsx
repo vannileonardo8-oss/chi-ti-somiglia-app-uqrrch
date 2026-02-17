@@ -1,4 +1,3 @@
-
 import React, { useState } from "react";
 import {
   View,
@@ -19,7 +18,8 @@ type Mode = "signin" | "signup";
 
 export default function AuthScreen() {
   const router = useRouter();
-  const { signInWithEmail, signUpWithEmail, signInWithGoogle, signInWithApple, loading: authLoading } = useAuth();
+  const { signInWithEmail, signUpWithEmail, signInWithGoogle, signInWithApple, signInWithGitHub, loading: authLoading } =
+    useAuth();
 
   const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
@@ -36,18 +36,12 @@ export default function AuthScreen() {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#007AFF" />
-        <Text style={styles.loadingText}>Caricamento...</Text>
       </View>
     );
   }
 
   const showModal = (title: string, message: string) => {
     setModal({ visible: true, title, message });
-  };
-
-  const handleSkip = () => {
-    console.log("⏭️ User skipped authentication");
-    router.replace("/(tabs)/(home)");
   };
 
   const handleEmailAuth = async () => {
@@ -58,45 +52,37 @@ export default function AuthScreen() {
 
     setLoading(true);
     try {
-      console.log(`📧 Attempting ${mode} with email:`, email);
       if (mode === "signin") {
         await signInWithEmail(email, password);
-        console.log("✅ Email sign in successful");
         router.replace("/(tabs)/(home)");
       } else {
         await signUpWithEmail(email, password, name);
-        console.log("✅ Email sign up successful");
-        showModal("Successo", "Account creato! Controlla la tua email per verificare l'account.");
+        showModal(
+          "Successo",
+          "Account creato! Controlla la tua email per verificare l'account."
+        );
         router.replace("/(tabs)/(home)");
       }
     } catch (error: any) {
-      console.error(`❌ Email ${mode} failed:`, error);
       showModal("Errore", error.message || "Autenticazione fallita");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSocialAuth = async (provider: "google" | "apple") => {
+  const handleSocialAuth = async (provider: "google" | "apple" | "github") => {
     setLoading(true);
     try {
-      console.log(`🔐 Attempting ${provider} authentication...`);
       if (provider === "google") {
         await signInWithGoogle();
       } else if (provider === "apple") {
         await signInWithApple();
+      } else if (provider === "github") {
+        await signInWithGitHub();
       }
-      
-      console.log(`✅ ${provider} authentication initiated`);
-      
-      // On web, navigation happens after popup closes
-      // On native, navigation happens after deep link callback
-      if (Platform.OS === "web") {
-        router.replace("/(tabs)/(home)");
-      }
+      router.replace("/(tabs)/(home)");
     } catch (error: any) {
-      console.error(`❌ ${provider} authentication failed:`, error);
-      showModal("Errore", error?.message || "Autenticazione fallita. Riprova.");
+      showModal("Errore", error.message || "Autenticazione fallita");
     } finally {
       setLoading(false);
     }
@@ -112,7 +98,9 @@ export default function AuthScreen() {
           <Text style={styles.title}>
             {mode === "signin" ? "Accedi" : "Registrati"}
           </Text>
-          <Text style={styles.subtitle}>Chi ti somiglia?</Text>
+          <Text style={styles.subtitle}>
+            Chi ti somiglia?
+          </Text>
 
           {mode === "signup" && (
             <TextInput
@@ -179,11 +167,7 @@ export default function AuthScreen() {
             onPress={() => handleSocialAuth("google")}
             disabled={loading}
           >
-            {loading ? (
-              <ActivityIndicator color="#000" />
-            ) : (
-              <Text style={styles.socialButtonText}>Continua con Google</Text>
-            )}
+            <Text style={styles.socialButtonText}>Continua con Google</Text>
           </TouchableOpacity>
 
           {Platform.OS === "ios" && (
@@ -192,25 +176,15 @@ export default function AuthScreen() {
               onPress={() => handleSocialAuth("apple")}
               disabled={loading}
             >
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={[styles.socialButtonText, styles.appleButtonText]}>
-                  Continua con Apple
-                </Text>
-              )}
+              <Text style={[styles.socialButtonText, styles.appleButtonText]}>
+                Continua con Apple
+              </Text>
             </TouchableOpacity>
           )}
-
-          <TouchableOpacity
-            style={styles.skipButton}
-            onPress={handleSkip}
-          >
-            <Text style={styles.skipButtonText}>Salta per ora</Text>
-          </TouchableOpacity>
         </View>
       </ScrollView>
 
+      {/* Modal */}
       <Modal
         visible={modal.visible}
         transparent
@@ -244,11 +218,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: "#fff",
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: "#666",
   },
   scrollContent: {
     flexGrow: 1,
@@ -342,16 +311,6 @@ const styles = StyleSheet.create({
   },
   appleButtonText: {
     color: "#fff",
-  },
-  skipButton: {
-    marginTop: 24,
-    alignItems: "center",
-    paddingVertical: 12,
-  },
-  skipButtonText: {
-    color: "#999",
-    fontSize: 16,
-    textDecorationLine: "underline",
   },
   modalOverlay: {
     flex: 1,
