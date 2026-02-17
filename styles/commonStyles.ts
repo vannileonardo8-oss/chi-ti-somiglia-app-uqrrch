@@ -3,7 +3,7 @@ import { StyleSheet } from 'react-native';
 
 export const colors = {
   // Fun, vibrant color palette for a playful comparison app
-  background: '#FFF5F8',
+  background: '#FFFFFF',
   backgroundDark: '#0F0F0F',
   text: '#1A1A1A',
   textDark: '#F5F5F5',
@@ -15,15 +15,11 @@ export const colors = {
   secondaryDark: '#26A69A',
   accent: '#FFD93D', // Bright yellow
   accentDark: '#FFC107',
-  purple: '#9B59B6', // Fun purple
-  purpleDark: '#8E44AD',
-  orange: '#FF9F43', // Vibrant orange
-  orangeDark: '#FF7F00',
-  card: '#FFFFFF',
+  card: '#F8F9FA',
   cardDark: '#1E1E1E',
   highlight: '#FF8FAB',
   highlightDark: '#FF5C8D',
-  border: '#FFE0E9',
+  border: '#E0E0E0',
   borderDark: '#333333',
   success: '#4CAF50',
   error: '#F44336',
