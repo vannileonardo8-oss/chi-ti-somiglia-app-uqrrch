@@ -73,6 +73,8 @@ export default function AuthScreen() {
   const handleSocialAuth = async (provider: "google" | "apple" | "github") => {
     setLoading(true);
     try {
+      console.log(`🔐 [AuthScreen] Starting ${provider} authentication...`);
+      
       if (provider === "google") {
         await signInWithGoogle();
       } else if (provider === "apple") {
@@ -80,9 +82,23 @@ export default function AuthScreen() {
       } else if (provider === "github") {
         await signInWithGitHub();
       }
+      
+      console.log(`✅ [AuthScreen] ${provider} authentication successful, navigating to home...`);
       router.replace("/(tabs)/(home)");
     } catch (error: any) {
-      showModal("Errore", error.message || "Autenticazione fallita");
+      console.error(`❌ [AuthScreen] ${provider} authentication failed:`, error);
+      
+      let errorMessage = "Autenticazione fallita. Riprova.";
+      
+      if (error?.message) {
+        errorMessage = error.message;
+      } else if (error?.toString().includes("500")) {
+        errorMessage = "Errore del server. Stiamo risolvendo il problema. Riprova tra qualche minuto.";
+      } else if (error?.toString().includes("network")) {
+        errorMessage = "Errore di connessione. Controlla la tua connessione internet.";
+      }
+      
+      showModal("Errore di Autenticazione", errorMessage);
     } finally {
       setLoading(false);
     }

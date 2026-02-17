@@ -173,12 +173,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
         
         console.log(`✅ [AuthContext] ${provider} OAuth initiated, waiting for callback...`);
-        // The redirect will be handled by the deep link listener
+        console.log(`⏳ [AuthContext] Waiting 3 seconds for OAuth redirect to complete...`);
+        
+        // Wait a bit for the OAuth flow to complete and redirect back
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
+        console.log(`🔄 [AuthContext] Fetching user session after OAuth...`);
         await fetchUser();
+        
+        console.log(`✅ [AuthContext] ${provider} OAuth flow completed`);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error(`❌ [AuthContext] ${provider} sign in failed:`, error);
-      throw error;
+      console.error(`❌ [AuthContext] Error details:`, JSON.stringify(error, null, 2));
+      
+      // Provide a user-friendly error message
+      const errorMessage = error?.message || `Errore durante l'accesso con ${provider}. Riprova.`;
+      throw new Error(errorMessage);
     }
   };
 
