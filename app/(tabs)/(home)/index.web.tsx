@@ -40,7 +40,6 @@ export default function HomeScreen() {
     message: '',
   });
 
-  const bgColor = isDark ? colors.backgroundDark : colors.background;
   const textColor = isDark ? colors.textDark : colors.text;
   const textSecondaryColor = isDark ? colors.textSecondaryDark : colors.textSecondary;
   const cardColor = isDark ? colors.cardDark : colors.card;
@@ -191,218 +190,233 @@ export default function HomeScreen() {
   const canAnalyze = mainImage && compareImage1 && compareImage2 && !isAnalyzing;
   const canViewResults = comparisonId && !isAnalyzing;
 
+  const gradientColors = isDark 
+    ? ['#1A0B2E', '#2D1B4E', '#1A0B2E']
+    : ['#FFE5F1', '#E5F4FF', '#FFF5E5', '#F0E5FF'];
+
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: bgColor }]} edges={['top']}>
-      <Stack.Screen options={{ headerShown: false }} />
-      
-      <ScrollView 
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.header}>
-          <View style={styles.emojiRow}>
-            <Text style={styles.emoji}>🤔</Text>
-            <Text style={styles.emoji}>👥</Text>
-            <Text style={styles.emoji}>✨</Text>
-          </View>
-          <Text style={[styles.title, { color: textColor }]}>Chi ti somiglia?</Text>
-          <Text style={[styles.subtitle, { color: textSecondaryColor }]}>
-            Carica tre foto e scopri chi assomiglia di più!
-          </Text>
-        </View>
-
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionEmoji}>📸</Text>
-            <Text style={[styles.sectionTitle, { color: primaryColor }]}>Foto Principale</Text>
-          </View>
-          <TouchableOpacity
-            style={[styles.imageCard, { backgroundColor: cardColor, borderColor: primaryColor }]}
-            onPress={() => pickImage('main')}
-            activeOpacity={0.7}
-          >
-            {mainImage ? (
-              <Image source={{ uri: mainImage.uri }} style={styles.image} />
-            ) : (
-              <View style={styles.imagePlaceholder}>
-                <IconSymbol
-                  ios_icon_name="photo"
-                  android_material_icon_name="add-photo-alternate"
-                  size={48}
-                  color={primaryColor}
-                />
-                <Text style={[styles.placeholderText, { color: primaryColor }]}>
-                  Tocca per caricare
-                </Text>
-              </View>
-            )}
-          </TouchableOpacity>
-          {mainImage && (
-            <TextInput
-              style={[styles.labelInput, { backgroundColor: cardColor, color: textColor, borderColor: primaryColor }]}
-              placeholder="Chi è? (es. Io, Mamma, Marco)"
-              placeholderTextColor={textSecondaryColor}
-              value={mainImage.label}
-              onChangeText={(text) => updateLabel('main', text)}
-            />
-          )}
-        </View>
-
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionEmoji}>🆚</Text>
-            <Text style={[styles.sectionTitle, { color: secondaryColor }]}>Foto da Confrontare</Text>
-          </View>
-          
-          <View style={styles.compareRow}>
-            <View style={styles.compareContainer}>
-              <TouchableOpacity
-                style={[styles.compareCard, { backgroundColor: cardColor, borderColor: secondaryColor }]}
-                onPress={() => pickImage('compare1')}
-                activeOpacity={0.7}
-              >
-                {compareImage1 ? (
-                  <Image source={{ uri: compareImage1.uri }} style={styles.compareImage} />
-                ) : (
-                  <View style={styles.comparePlaceholder}>
-                    <IconSymbol
-                      ios_icon_name="photo"
-                      android_material_icon_name="add-photo-alternate"
-                      size={32}
-                      color={secondaryColor}
-                    />
-                    <Text style={[styles.compareNumber, { color: secondaryColor }]}>1</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-              {compareImage1 && (
-                <TextInput
-                  style={[styles.compareLabelInput, { backgroundColor: cardColor, color: textColor, borderColor: secondaryColor }]}
-                  placeholder="Nome"
-                  placeholderTextColor={textSecondaryColor}
-                  value={compareImage1.label}
-                  onChangeText={(text) => updateLabel('compare1', text)}
-                />
-              )}
-            </View>
-
-            <View style={styles.compareContainer}>
-              <TouchableOpacity
-                style={[styles.compareCard, { backgroundColor: cardColor, borderColor: purpleColor }]}
-                onPress={() => pickImage('compare2')}
-                activeOpacity={0.7}
-              >
-                {compareImage2 ? (
-                  <Image source={{ uri: compareImage2.uri }} style={styles.compareImage} />
-                ) : (
-                  <View style={styles.comparePlaceholder}>
-                    <IconSymbol
-                      ios_icon_name="photo"
-                      android_material_icon_name="add-photo-alternate"
-                      size={32}
-                      color={purpleColor}
-                    />
-                    <Text style={[styles.compareNumber, { color: purpleColor }]}>2</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-              {compareImage2 && (
-                <TextInput
-                  style={[styles.compareLabelInput, { backgroundColor: cardColor, color: textColor, borderColor: purpleColor }]}
-                  placeholder="Nome"
-                  placeholderTextColor={textSecondaryColor}
-                  value={compareImage2.label}
-                  onChangeText={(text) => updateLabel('compare2', text)}
-                />
-              )}
-            </View>
-          </View>
-        </View>
-
-        <TouchableOpacity
-          style={[
-            styles.analyzeButton,
-            !canAnalyze && styles.analyzeButtonDisabled,
-          ]}
-          onPress={handleAnalyze}
-          disabled={!canAnalyze}
-          activeOpacity={0.8}
+    <LinearGradient
+      colors={gradientColors}
+      style={styles.gradientContainer}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+    >
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <Stack.Screen options={{ headerShown: false }} />
+        
+        <ScrollView 
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          scrollEnabled={true}
         >
-          <LinearGradient
-            colors={canAnalyze ? [primaryColor, secondaryColor] : ['#CCCCCC', '#999999']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.analyzeGradient}
-          >
-            {isAnalyzing ? (
-              <>
-                <ActivityIndicator color="#FFFFFF" size="small" />
-                <Text style={styles.analyzeButtonText}>Analisi in corso...</Text>
-              </>
-            ) : (
-              <>
-                <Text style={styles.analyzeButtonEmoji}>🔍</Text>
-                <Text style={styles.analyzeButtonText}>Analizza Ora</Text>
-              </>
-            )}
-          </LinearGradient>
-        </TouchableOpacity>
+          <View style={styles.header}>
+            <View style={styles.emojiRow}>
+              <Text style={styles.emoji}>🤔</Text>
+              <Text style={styles.emoji}>👥</Text>
+              <Text style={styles.emoji}>✨</Text>
+            </View>
+            <Text style={[styles.title, { color: textColor }]}>Chi ti somiglia?</Text>
+            <Text style={[styles.subtitle, { color: textSecondaryColor }]}>
+              Carica tre foto e scopri chi assomiglia di più!
+            </Text>
+          </View>
 
-        {canViewResults && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionEmoji}>📸</Text>
+              <Text style={[styles.sectionTitle, { color: primaryColor }]}>Foto Principale</Text>
+            </View>
+            <TouchableOpacity
+              style={[styles.imageCard, { backgroundColor: cardColor, borderColor: primaryColor }]}
+              onPress={() => pickImage('main')}
+              activeOpacity={0.7}
+            >
+              {mainImage ? (
+                <Image source={{ uri: mainImage.uri }} style={styles.image} />
+              ) : (
+                <View style={styles.imagePlaceholder}>
+                  <IconSymbol
+                    ios_icon_name="photo"
+                    android_material_icon_name="add-photo-alternate"
+                    size={48}
+                    color={primaryColor}
+                  />
+                  <Text style={[styles.placeholderText, { color: primaryColor }]}>
+                    Tocca per caricare
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            {mainImage && (
+              <TextInput
+                style={[styles.labelInput, { backgroundColor: cardColor, color: textColor, borderColor: primaryColor }]}
+                placeholder="Chi è? (es. Io, Mamma, Marco)"
+                placeholderTextColor={textSecondaryColor}
+                value={mainImage.label}
+                onChangeText={(text) => updateLabel('main', text)}
+              />
+            )}
+          </View>
+
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionEmoji}>🆚</Text>
+              <Text style={[styles.sectionTitle, { color: secondaryColor }]}>Foto da Confrontare</Text>
+            </View>
+            
+            <View style={styles.compareRow}>
+              <View style={styles.compareContainer}>
+                <TouchableOpacity
+                  style={[styles.compareCard, { backgroundColor: cardColor, borderColor: secondaryColor }]}
+                  onPress={() => pickImage('compare1')}
+                  activeOpacity={0.7}
+                >
+                  {compareImage1 ? (
+                    <Image source={{ uri: compareImage1.uri }} style={styles.compareImage} />
+                  ) : (
+                    <View style={styles.comparePlaceholder}>
+                      <IconSymbol
+                        ios_icon_name="photo"
+                        android_material_icon_name="add-photo-alternate"
+                        size={32}
+                        color={secondaryColor}
+                      />
+                      <Text style={[styles.compareNumber, { color: secondaryColor }]}>1</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+                {compareImage1 && (
+                  <TextInput
+                    style={[styles.compareLabelInput, { backgroundColor: cardColor, color: textColor, borderColor: secondaryColor }]}
+                    placeholder="Nome"
+                    placeholderTextColor={textSecondaryColor}
+                    value={compareImage1.label}
+                    onChangeText={(text) => updateLabel('compare1', text)}
+                  />
+                )}
+              </View>
+
+              <View style={styles.compareContainer}>
+                <TouchableOpacity
+                  style={[styles.compareCard, { backgroundColor: cardColor, borderColor: purpleColor }]}
+                  onPress={() => pickImage('compare2')}
+                  activeOpacity={0.7}
+                >
+                  {compareImage2 ? (
+                    <Image source={{ uri: compareImage2.uri }} style={styles.compareImage} />
+                  ) : (
+                    <View style={styles.comparePlaceholder}>
+                      <IconSymbol
+                        ios_icon_name="photo"
+                        android_material_icon_name="add-photo-alternate"
+                        size={32}
+                        color={purpleColor}
+                      />
+                      <Text style={[styles.compareNumber, { color: purpleColor }]}>2</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+                {compareImage2 && (
+                  <TextInput
+                    style={[styles.compareLabelInput, { backgroundColor: cardColor, color: textColor, borderColor: purpleColor }]}
+                    placeholder="Nome"
+                    placeholderTextColor={textSecondaryColor}
+                    value={compareImage2.label}
+                    onChangeText={(text) => updateLabel('compare2', text)}
+                  />
+                )}
+              </View>
+            </View>
+          </View>
+
           <TouchableOpacity
-            style={styles.resultsButton}
-            onPress={handleViewResults}
+            style={[
+              styles.analyzeButton,
+              !canAnalyze && styles.analyzeButtonDisabled,
+            ]}
+            onPress={handleAnalyze}
+            disabled={!canAnalyze}
             activeOpacity={0.8}
           >
             <LinearGradient
-              colors={[accentColor, colors.orange]}
+              colors={canAnalyze ? [primaryColor, secondaryColor] : ['#CCCCCC', '#999999']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
-              style={styles.resultsGradient}
+              style={styles.analyzeGradient}
             >
-              <Text style={styles.resultsButtonEmoji}>🎉</Text>
-              <Text style={styles.resultsButtonText}>Vedi Risultati</Text>
-              <IconSymbol
-                ios_icon_name="arrow.right"
-                android_material_icon_name="arrow-forward"
-                size={20}
-                color="#FFFFFF"
-              />
+              {isAnalyzing ? (
+                <>
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                  <Text style={styles.analyzeButtonText}>Analisi in corso...</Text>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.analyzeButtonEmoji}>🔍</Text>
+                  <Text style={styles.analyzeButtonText}>Analizza Ora</Text>
+                </>
+              )}
             </LinearGradient>
           </TouchableOpacity>
-        )}
 
-        <View style={{ height: 100 }} />
-      </ScrollView>
-
-      <Modal
-        visible={errorModal.visible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setErrorModal({ visible: false, message: '' })}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: cardColor }]}>
-            <Text style={styles.modalEmoji}>⚠️</Text>
-            <Text style={[styles.modalTitle, { color: textColor }]}>Attenzione</Text>
-            <Text style={[styles.modalMessage, { color: textSecondaryColor }]}>
-              {errorModal.message}
-            </Text>
+          {canViewResults && (
             <TouchableOpacity
-              style={[styles.modalButton, { backgroundColor: primaryColor }]}
-              onPress={() => setErrorModal({ visible: false, message: '' })}
+              style={styles.resultsButton}
+              onPress={handleViewResults}
+              activeOpacity={0.8}
             >
-              <Text style={styles.modalButtonText}>OK</Text>
+              <LinearGradient
+                colors={[accentColor, colors.orange]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.resultsGradient}
+              >
+                <Text style={styles.resultsButtonEmoji}>🎉</Text>
+                <Text style={styles.resultsButtonText}>Vedi Risultati</Text>
+                <IconSymbol
+                  ios_icon_name="arrow.right"
+                  android_material_icon_name="arrow-forward"
+                  size={20}
+                  color="#FFFFFF"
+                />
+              </LinearGradient>
             </TouchableOpacity>
+          )}
+
+          <View style={{ height: 100 }} />
+        </ScrollView>
+
+        <Modal
+          visible={errorModal.visible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setErrorModal({ visible: false, message: '' })}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { backgroundColor: cardColor }]}>
+              <Text style={styles.modalEmoji}>⚠️</Text>
+              <Text style={[styles.modalTitle, { color: textColor }]}>Attenzione</Text>
+              <Text style={[styles.modalMessage, { color: textSecondaryColor }]}>
+                {errorModal.message}
+              </Text>
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: primaryColor }]}
+                onPress={() => setErrorModal({ visible: false, message: '' })}
+              >
+                <Text style={styles.modalButtonText}>OK</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
-      </Modal>
-    </SafeAreaView>
+        </Modal>
+      </SafeAreaView>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
+  gradientContainer: {
+    flex: 1,
+  },
   container: {
     flex: 1,
   },
