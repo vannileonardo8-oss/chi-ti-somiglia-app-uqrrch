@@ -30,10 +30,10 @@ try {
 }
 
 export const unstable_settings = {
-  initialRouteName: "(tabs)",
+  initialRouteName: "auth",
 };
 
-// Auth Guard Component - Now allows skipping authentication
+// Auth Guard Component - Shows auth screen first, allows skipping
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const segments = useSegments();
@@ -50,11 +50,17 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 
     console.log("🔍 Auth check:", { user: user?.email || "none", inAuthGroup, inProtectedRoute, segments });
 
-    // Only redirect to auth if user explicitly tries to access protected routes
-    // For now, we allow access without authentication
+    // If user is authenticated and on auth screen, redirect to home
     if (user && inAuthGroup) {
       console.log('✅ User authenticated, redirecting to home');
       router.replace("/(tabs)/(home)");
+    }
+    
+    // If user is not authenticated and not on auth screens, redirect to auth
+    // But only if they're trying to access protected features (like sharing results)
+    if (!user && !inAuthGroup && segments[0] === "results") {
+      console.log('🔒 Protected route accessed without auth, redirecting to auth');
+      router.replace("/auth");
     }
   }, [user, loading, segments]);
 
