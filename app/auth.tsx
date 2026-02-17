@@ -19,8 +19,7 @@ type Mode = "signin" | "signup";
 
 export default function AuthScreen() {
   const router = useRouter();
-  const { signInWithEmail, signUpWithEmail, signInWithGoogle, signInWithApple, signInWithGitHub, loading: authLoading } =
-    useAuth();
+  const { signInWithEmail, signUpWithEmail, signInWithGoogle, signInWithApple, loading: authLoading } = useAuth();
 
   const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
@@ -59,10 +58,7 @@ export default function AuthScreen() {
         router.replace("/(tabs)/(home)");
       } else {
         await signUpWithEmail(email, password, name);
-        showModal(
-          "Successo",
-          "Account creato! Controlla la tua email per verificare l'account."
-        );
+        showModal("Successo", "Account creato! Controlla la tua email per verificare l'account.");
         router.replace("/(tabs)/(home)");
       }
     } catch (error: any) {
@@ -72,41 +68,22 @@ export default function AuthScreen() {
     }
   };
 
-  const handleSocialAuth = async (provider: "google" | "apple" | "github") => {
+  const handleSocialAuth = async (provider: "google" | "apple") => {
     setLoading(true);
     try {
-      console.log(`🔐 [AuthScreen] Starting ${provider} authentication...`);
-      console.log(`📱 [AuthScreen] Platform: ${Platform.OS}`);
-      
       if (provider === "google") {
         await signInWithGoogle();
       } else if (provider === "apple") {
         await signInWithApple();
-      } else if (provider === "github") {
-        await signInWithGitHub();
       }
       
-      console.log(`✅ [AuthScreen] ${provider} authentication successful, navigating to home...`);
-      router.replace("/(tabs)/(home)");
+      // On web, navigation happens after popup closes
+      // On native, navigation happens after deep link callback
+      if (Platform.OS === "web") {
+        router.replace("/(tabs)/(home)");
+      }
     } catch (error: any) {
-      console.error(`❌ [AuthScreen] ${provider} authentication failed:`, error);
-      console.error(`❌ [AuthScreen] Error type:`, typeof error);
-      console.error(`❌ [AuthScreen] Error message:`, error?.message);
-      console.error(`❌ [AuthScreen] Error stack:`, error?.stack);
-      
-      let errorMessage = "Autenticazione fallita. Riprova.";
-      
-      if (error?.message) {
-        errorMessage = error.message;
-      } else if (error?.toString().includes("500")) {
-        errorMessage = "Errore del server. Stiamo risolvendo il problema. Riprova tra qualche minuto.";
-      } else if (error?.toString().includes("network")) {
-        errorMessage = "Errore di connessione. Controlla la tua connessione internet.";
-      } else if (error?.toString().includes("timeout") || error?.toString().includes("Timeout")) {
-        errorMessage = "L'autenticazione sta richiedendo troppo tempo. Controlla la tua connessione e riprova.";
-      }
-      
-      showModal("Errore di Autenticazione", errorMessage);
+      showModal("Errore", error?.message || "Autenticazione fallita. Riprova.");
     } finally {
       setLoading(false);
     }
@@ -122,9 +99,7 @@ export default function AuthScreen() {
           <Text style={styles.title}>
             {mode === "signin" ? "Accedi" : "Registrati"}
           </Text>
-          <Text style={styles.subtitle}>
-            Chi ti somiglia?
-          </Text>
+          <Text style={styles.subtitle}>Chi ti somiglia?</Text>
 
           {mode === "signup" && (
             <TextInput
@@ -216,7 +191,6 @@ export default function AuthScreen() {
         </View>
       </ScrollView>
 
-      {/* Modal */}
       <Modal
         visible={modal.visible}
         transparent
