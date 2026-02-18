@@ -363,4 +363,56 @@ Formatta la risposta come JSON valido solamente, nessun testo aggiuntivo.`,
       }
     }
   );
+
+  // DELETE /api/comparisons/:id
+  app.fastify.delete(
+    '/api/comparisons/:id',
+    async (request, reply) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const userId = session.user.id;
+      const params = request.params as { id: string };
+      const { id } = params;
+
+      app.logger.info({ comparisonId: id, userId }, 'Delete comparison requested');
+
+      try {
+        // Find the comparison to verify it belongs to the user
+        const comparison = await app.db.query.comparisons.findFirst({
+          where: eq(schema.comparisons.id, id),
+        });
+
+        if (!comparison) {
+          app.logger.warn({ comparisonId: id }, 'Comparison not found');
+          return reply.status(404).send({ error: 'Comparison not found' });
+        }
+
+        // Check if the comparison belongs to the authenticated user
+        if (comparison.userId !== userId) {
+          app.logger.warn(
+            { comparisonId: id, userId, ownerId: comparison.userId },
+            'User attempted to delete someone else\'s comparison'
+          );
+          return reply.status(403).send({ error: 'Unauthorized to delete this comparison' });
+        }
+
+        // Delete the comparison
+        await app.db.delete(schema.comparisons).where(eq(schema.comparisons.id, id));
+
+        app.logger.info(
+          { comparisonId: id, userId },
+          'Comparison deleted successfully'
+        );
+
+        return { success: true };
+      } catch (error) {
+        app.logger.error(
+          { err: error, comparisonId: id, userId },
+          'Failed to delete comparison'
+        );
+        throw error;
+      }
+    }
+  );
 }
