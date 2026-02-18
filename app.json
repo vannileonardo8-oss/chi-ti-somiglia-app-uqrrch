@@ -36,7 +36,7 @@
       "expo-router",
       "expo-web-browser"
     ],
-    "scheme": "chi-ti-somiglia",
+    "scheme": "Chi ti somiglia?",
     "experiments": {
       "typedRoutes": true
     },
