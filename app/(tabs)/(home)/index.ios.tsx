@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { IconSymbol } from '@/components/IconSymbol';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -48,6 +49,22 @@ export default function HomeScreen() {
     setErrorModal({ visible: true, message });
   };
 
+  const compressImage = async (uri: string): Promise<string> => {
+    console.log('[Image] Compressing image:', uri);
+    try {
+      const manipResult = await ImageManipulator.manipulateAsync(
+        uri,
+        [{ resize: { width: 1024 } }],
+        { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+      );
+      console.log('[Image] Compressed successfully:', manipResult.uri);
+      return manipResult.uri;
+    } catch (error) {
+      console.error('[Image] Compression failed:', error);
+      return uri;
+    }
+  };
+
   const pickImage = async (type: 'main' | 'compare1' | 'compare2') => {
     console.log('User tapped pick image button for:', type);
     
@@ -67,8 +84,9 @@ export default function HomeScreen() {
 
     if (!result.canceled && result.assets[0]) {
       console.log('Image selected:', result.assets[0].uri);
+      const compressedUri = await compressImage(result.assets[0].uri);
       const imageData: ImageData = {
-        uri: result.assets[0].uri,
+        uri: compressedUri,
         label: '',
       };
 
@@ -165,7 +183,6 @@ export default function HomeScreen() {
       
       console.log('[API] Comparison result:', result);
       
-      // Navigate directly to results
       router.push(`/results/${result.comparisonId}`);
     } catch (error: any) {
       console.error('Error analyzing images:', error);
