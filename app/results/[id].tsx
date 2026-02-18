@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -68,11 +68,7 @@ export default function ResultsScreen() {
   const secondaryColor = colors.secondary;
   const successColor = colors.success;
 
-  useEffect(() => {
-    loadResult();
-  }, [id]);
-
-  const loadResult = async () => {
+  const loadResult = useCallback(async () => {
     console.log('[API] Loading comparison result for id:', id);
     setLoading(true);
     
@@ -112,7 +108,11 @@ export default function ResultsScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
+
+  useEffect(() => {
+    loadResult();
+  }, [loadResult]);
 
   const handleShare = async () => {
     console.log('User tapped share button');

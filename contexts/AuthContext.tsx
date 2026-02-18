@@ -2,8 +2,9 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { Platform } from "react-native";
 import * as Linking from "expo-linking";
+import * as WebBrowser from "expo-web-browser";
 import { useRouter } from "expo-router";
-import { authClient, setBearerToken, clearAuthTokens } from "@/lib/auth";
+import { authClient, setBearerToken, clearAuthTokens, API_URL } from "@/lib/auth";
 
 interface User {
   id: string;
@@ -25,6 +26,9 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+// Warm up the browser for faster OAuth on iOS
+WebBrowser.maybeCompleteAuthSession();
 
 function openOAuthPopup(provider: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -280,18 +284,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await setBearerToken(token);
         await fetchUser();
       } else {
-        // Native: Use expo-linking to generate a proper deep link
-        const callbackURL = Linking.createURL("/(tabs)/(home)");
-        console.log("[AuthContext] 📱 Native OAuth callback URL:", callbackURL);
+        // Native: Use WebBrowser for OAuth flow
+        const redirectUri = Linking.createURL("/");
+        console.log("[AuthContext] 📱 Native OAuth redirect URI:", redirectUri);
         
-        await authClient.signIn.social({
-          provider,
-          callbackURL,
-        });
+        // Construct the OAuth URL
+        const authUrl = `${API_URL}/api/auth/oauth/${provider}?redirect_uri=${encodeURIComponent(redirectUri)}`;
+        console.log("[AuthContext] 🌐 Opening OAuth URL:", authUrl);
         
-        // On native, the OAuth flow will redirect back to the app
-        // The deep link listener will trigger fetchUser
-        console.log("[AuthContext] ⏳ OAuth flow initiated, waiting for redirect...");
+        // Open the browser for OAuth
+        const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
+        
+        console.log("[AuthContext] 📱 WebBrowser result:", result);
+        
+        if (result.type === "success" && result.url) {
+          console.log("[AuthContext] ✅ OAuth success, parsing URL:", result.url);
+          
+          // Extract token from the redirect URL
+          const url = new URL(result.url);
+          const token = url.searchParams.get("better_auth_token");
+          
+          if (token) {
+            console.log("[AuthContext] ✅ Token extracted from OAuth redirect");
+            await setBearerToken(token);
+            const userFetched = await fetchUser();
+            
+            if (userFetched) {
+              console.log("[AuthContext] ✅ User fetched after OAuth");
+            } else {
+              throw new Error("Failed to fetch user after OAuth");
+            }
+          } else {
+            console.error("[AuthContext] ❌ No token in OAuth redirect URL");
+            throw new Error("No authentication token received");
+          }
+        } else if (result.type === "cancel") {
+          console.log("[AuthContext] ⚠️ OAuth cancelled by user");
+          throw new Error("Authentication cancelled");
+        } else {
+          console.error("[AuthContext] ❌ OAuth failed:", result);
+          throw new Error("Authentication failed");
+        }
       }
     } catch (error) {
       console.error(`[AuthContext] ❌ ${provider} sign in failed:`, error);

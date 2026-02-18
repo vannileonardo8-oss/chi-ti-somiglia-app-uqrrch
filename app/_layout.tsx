@@ -38,7 +38,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     } else if (user && inAuthGroup) {
       router.replace("/(tabs)/(home)");
     }
-  }, [user, loading, segments]);
+  }, [user, loading, segments, router]);
 
   if (loading) {
     return (
