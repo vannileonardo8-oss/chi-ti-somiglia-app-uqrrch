@@ -65,11 +65,13 @@ export const authClient = createAuthClient({
 
 export async function setBearerToken(token: string) {
   try {
+    console.log("Setting bearer token...");
     if (Platform.OS === "web") {
       localStorage.setItem(BEARER_TOKEN_KEY, token);
     } else {
       await SecureStore.setItemAsync(BEARER_TOKEN_KEY, token);
     }
+    console.log("Bearer token set successfully");
   } catch (error) {
     console.error("Failed to set bearer token:", error);
   }
