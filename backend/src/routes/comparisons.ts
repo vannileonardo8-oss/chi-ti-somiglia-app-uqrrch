@@ -132,29 +132,31 @@ export function registerComparisonsRoutes(app: App) {
               content: [
                 {
                   type: 'text',
-                  text: `You are an expert facial analysis AI. Analyze the following three images:
-1. MAIN IMAGE (the reference face): ${mainImageLabel || 'Reference image'}
-2. COMPARISON IMAGE 1: ${compareImage1Label || 'First comparison'}
-3. COMPARISON IMAGE 2: ${compareImage2Label || 'Second comparison'}
+                  text: `Sei un esperto di analisi facciale AI. Analizza le seguenti tre immagini:
+1. IMMAGINE PRINCIPALE (il viso di riferimento): ${mainImageLabel || 'Immagine di riferimento'}
+2. IMMAGINE DI CONFRONTO 1: ${compareImage1Label || 'Primo confronto'}
+3. IMMAGINE DI CONFRONTO 2: ${compareImage2Label || 'Secondo confronto'}
 
-Compare the facial features in both comparison images against the main image. Analyze these specific features:
-- Eye distance and spacing
-- Face shape (oval, round, square, rectangular, etc.)
-- Nose shape and size
-- Mouth shape and lips
-- Eyebrow shape and thickness
-- Facial proportions (distance between features)
-- Skin tone similarity
-- Overall facial symmetry
+Confronta i tratti del viso in entrambe le immagini di confronto rispetto all'immagine principale. Analizza questi tratti specifici:
+- Distanza tra gli occhi e spaziatura
+- Forma del viso (ovale, rotonda, quadrata, rettangolare, ecc.)
+- Forma e dimensione del naso
+- Forma della bocca e delle labbra
+- Forma e spessore delle sopracciglia
+- Proporzioni facciali (distanza tra i tratti)
+- Somiglianza del tono della pelle
+- Simmetria generale del viso
 
-Determine which comparison image (1 or 2) has facial features that are more similar to the main image.
+Determina quale immagine di confronto (1 o 2) ha tratti facciali più simili all'immagine principale.
 
-Return your analysis as JSON with:
-- winner: 1 or 2 (which image is more similar)
-- reasons: array of 5-7 specific feature comparisons with similarity scores (0-100)
-- summary: 2-3 sentence summary of why one image is more similar
+Restituisci la tua analisi come JSON con:
+- winner: 1 o 2 (quale immagine è più simile)
+- reasons: array di 5-7 confronti specifici dei tratti con punteggi di somiglianza (0-100)
+- summary: riepilogo di 2-3 frasi del motivo per cui un'immagine è più simile
 
-Format your response as valid JSON only, no additional text.`,
+IMPORTANTE: Tutte le descrizioni, i nomi dei tratti e il riepilogo DEVONO essere scritti in italiano. Non usare alcun testo in inglese.
+
+Formatta la risposta come JSON valido solamente, nessun testo aggiuntivo.`,
                 },
                 {
                   type: 'image',

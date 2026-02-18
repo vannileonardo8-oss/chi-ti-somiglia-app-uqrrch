@@ -34,6 +34,7 @@ export default function HomeScreen() {
   const [compareImage1, setCompareImage1] = useState<ImageData | null>(null);
   const [compareImage2, setCompareImage2] = useState<ImageData | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [comparisonId, setComparisonId] = useState<string | null>(null);
   const [errorModal, setErrorModal] = useState<{ visible: boolean; message: string }>({
     visible: false,
     message: '',
@@ -45,6 +46,8 @@ export default function HomeScreen() {
   const cardColor = isDark ? colors.cardDark : colors.card;
   const primaryColor = isDark ? colors.primaryDark : colors.primary;
   const secondaryColor = isDark ? colors.secondaryDark : colors.secondary;
+  const accentColor = isDark ? colors.accentDark : colors.accent;
+  const purpleColor = isDark ? colors.purpleDark : colors.purple;
 
   const showError = (message: string) => {
     setErrorModal({ visible: true, message });
@@ -142,6 +145,7 @@ export default function HomeScreen() {
     }
 
     setIsAnalyzing(true);
+    setComparisonId(null);
 
     try {
       console.log('[API] Uploading images...');
@@ -167,9 +171,7 @@ export default function HomeScreen() {
       });
       
       console.log('[API] Comparison result:', result);
-      
-      console.log('Analysis complete, navigating to results');
-      router.push(`/results/${result.comparisonId}`);
+      setComparisonId(result.comparisonId);
     } catch (error: any) {
       console.error('Error analyzing images:', error);
       const errorMessage = error?.message || 'Si è verificato un errore durante l\'analisi. Riprova.';
@@ -179,7 +181,15 @@ export default function HomeScreen() {
     }
   };
 
+  const handleViewResults = () => {
+    console.log('User tapped View Results button');
+    if (comparisonId) {
+      router.push(`/results/${comparisonId}`);
+    }
+  };
+
   const canAnalyze = mainImage && compareImage1 && compareImage2 && !isAnalyzing;
+  const canViewResults = comparisonId && !isAnalyzing;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: bgColor }]} edges={['top']}>
@@ -191,6 +201,11 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
+          <View style={styles.emojiRow}>
+            <Text style={styles.emoji}>🤔</Text>
+            <Text style={styles.emoji}>👥</Text>
+            <Text style={styles.emoji}>✨</Text>
+          </View>
           <Text style={[styles.title, { color: textColor }]}>Chi ti somiglia?</Text>
           <Text style={[styles.subtitle, { color: textSecondaryColor }]}>
             Carica tre foto e scopri chi assomiglia di più!
@@ -198,9 +213,12 @@ export default function HomeScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: primaryColor }]}>Foto Principale</Text>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionEmoji}>📸</Text>
+            <Text style={[styles.sectionTitle, { color: primaryColor }]}>Foto Principale</Text>
+          </View>
           <TouchableOpacity
-            style={[styles.imageCard, { backgroundColor: cardColor }]}
+            style={[styles.imageCard, { backgroundColor: cardColor, borderColor: primaryColor }]}
             onPress={() => pickImage('main')}
             activeOpacity={0.7}
           >
@@ -212,9 +230,9 @@ export default function HomeScreen() {
                   ios_icon_name="photo"
                   android_material_icon_name="add-photo-alternate"
                   size={48}
-                  color={textSecondaryColor}
+                  color={primaryColor}
                 />
-                <Text style={[styles.placeholderText, { color: textSecondaryColor }]}>
+                <Text style={[styles.placeholderText, { color: primaryColor }]}>
                   Tocca per caricare
                 </Text>
               </View>
@@ -222,7 +240,7 @@ export default function HomeScreen() {
           </TouchableOpacity>
           {mainImage && (
             <TextInput
-              style={[styles.labelInput, { backgroundColor: cardColor, color: textColor }]}
+              style={[styles.labelInput, { backgroundColor: cardColor, color: textColor, borderColor: primaryColor }]}
               placeholder="Chi è? (es. Io, Mamma, Marco)"
               placeholderTextColor={textSecondaryColor}
               value={mainImage.label}
@@ -232,12 +250,15 @@ export default function HomeScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: secondaryColor }]}>Foto da Confrontare</Text>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionEmoji}>🆚</Text>
+            <Text style={[styles.sectionTitle, { color: secondaryColor }]}>Foto da Confrontare</Text>
+          </View>
           
           <View style={styles.compareRow}>
             <View style={styles.compareContainer}>
               <TouchableOpacity
-                style={[styles.compareCard, { backgroundColor: cardColor }]}
+                style={[styles.compareCard, { backgroundColor: cardColor, borderColor: secondaryColor }]}
                 onPress={() => pickImage('compare1')}
                 activeOpacity={0.7}
               >
@@ -249,15 +270,15 @@ export default function HomeScreen() {
                       ios_icon_name="photo"
                       android_material_icon_name="add-photo-alternate"
                       size={32}
-                      color={textSecondaryColor}
+                      color={secondaryColor}
                     />
-                    <Text style={[styles.compareNumber, { color: textSecondaryColor }]}>1</Text>
+                    <Text style={[styles.compareNumber, { color: secondaryColor }]}>1</Text>
                   </View>
                 )}
               </TouchableOpacity>
               {compareImage1 && (
                 <TextInput
-                  style={[styles.compareLabelInput, { backgroundColor: cardColor, color: textColor }]}
+                  style={[styles.compareLabelInput, { backgroundColor: cardColor, color: textColor, borderColor: secondaryColor }]}
                   placeholder="Nome"
                   placeholderTextColor={textSecondaryColor}
                   value={compareImage1.label}
@@ -268,7 +289,7 @@ export default function HomeScreen() {
 
             <View style={styles.compareContainer}>
               <TouchableOpacity
-                style={[styles.compareCard, { backgroundColor: cardColor }]}
+                style={[styles.compareCard, { backgroundColor: cardColor, borderColor: purpleColor }]}
                 onPress={() => pickImage('compare2')}
                 activeOpacity={0.7}
               >
@@ -280,15 +301,15 @@ export default function HomeScreen() {
                       ios_icon_name="photo"
                       android_material_icon_name="add-photo-alternate"
                       size={32}
-                      color={textSecondaryColor}
+                      color={purpleColor}
                     />
-                    <Text style={[styles.compareNumber, { color: textSecondaryColor }]}>2</Text>
+                    <Text style={[styles.compareNumber, { color: purpleColor }]}>2</Text>
                   </View>
                 )}
               </TouchableOpacity>
               {compareImage2 && (
                 <TextInput
-                  style={[styles.compareLabelInput, { backgroundColor: cardColor, color: textColor }]}
+                  style={[styles.compareLabelInput, { backgroundColor: cardColor, color: textColor, borderColor: purpleColor }]}
                   placeholder="Nome"
                   placeholderTextColor={textSecondaryColor}
                   value={compareImage2.label}
@@ -315,12 +336,42 @@ export default function HomeScreen() {
             style={styles.analyzeGradient}
           >
             {isAnalyzing ? (
-              <ActivityIndicator color="#FFFFFF" size="small" />
+              <>
+                <ActivityIndicator color="#FFFFFF" size="small" />
+                <Text style={styles.analyzeButtonText}>Analisi in corso...</Text>
+              </>
             ) : (
-              <Text style={styles.analyzeButtonText}>Analizza Ora</Text>
+              <>
+                <Text style={styles.analyzeButtonEmoji}>🔍</Text>
+                <Text style={styles.analyzeButtonText}>Analizza Ora</Text>
+              </>
             )}
           </LinearGradient>
         </TouchableOpacity>
+
+        {canViewResults && (
+          <TouchableOpacity
+            style={styles.resultsButton}
+            onPress={handleViewResults}
+            activeOpacity={0.8}
+          >
+            <LinearGradient
+              colors={[accentColor, colors.orange]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.resultsGradient}
+            >
+              <Text style={styles.resultsButtonEmoji}>🎉</Text>
+              <Text style={styles.resultsButtonText}>Vedi Risultati</Text>
+              <IconSymbol
+                ios_icon_name="arrow.right"
+                android_material_icon_name="arrow-forward"
+                size={20}
+                color="#FFFFFF"
+              />
+            </LinearGradient>
+          </TouchableOpacity>
+        )}
 
         <View style={{ height: 100 }} />
       </ScrollView>
@@ -333,6 +384,7 @@ export default function HomeScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: cardColor }]}>
+            <Text style={styles.modalEmoji}>⚠️</Text>
             <Text style={[styles.modalTitle, { color: textColor }]}>Attenzione</Text>
             <Text style={[styles.modalMessage, { color: textSecondaryColor }]}>
               {errorModal.message}
@@ -364,6 +416,14 @@ const styles = StyleSheet.create({
     marginBottom: 32,
     alignItems: 'center',
   },
+  emojiRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 12,
+  },
+  emoji: {
+    fontSize: 32,
+  },
   title: {
     fontSize: 32,
     fontWeight: 'bold',
@@ -378,16 +438,25 @@ const styles = StyleSheet.create({
   section: {
     marginBottom: 32,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 16,
+  },
+  sectionEmoji: {
+    fontSize: 24,
+  },
   sectionTitle: {
     fontSize: 20,
     fontWeight: '600',
-    marginBottom: 16,
   },
   imageCard: {
     borderRadius: 20,
     overflow: 'hidden',
     aspectRatio: 3 / 4,
     marginBottom: 12,
+    borderWidth: 3,
   },
   image: {
     width: '100%',
@@ -401,11 +470,13 @@ const styles = StyleSheet.create({
   placeholderText: {
     marginTop: 12,
     fontSize: 16,
+    fontWeight: '600',
   },
   labelInput: {
     borderRadius: 12,
     padding: 16,
     fontSize: 16,
+    borderWidth: 2,
   },
   compareRow: {
     flexDirection: 'row',
@@ -419,6 +490,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     aspectRatio: 3 / 4,
     marginBottom: 12,
+    borderWidth: 3,
   },
   compareImage: {
     width: '100%',
@@ -438,11 +510,17 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 12,
     fontSize: 14,
+    borderWidth: 2,
   },
   analyzeButton: {
     borderRadius: 16,
     overflow: 'hidden',
     marginTop: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
   analyzeButtonDisabled: {
     opacity: 0.5,
@@ -451,8 +529,38 @@ const styles = StyleSheet.create({
     paddingVertical: 18,
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  analyzeButtonEmoji: {
+    fontSize: 20,
   },
   analyzeButtonText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  resultsButton: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginTop: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  resultsGradient: {
+    paddingVertical: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  resultsButtonEmoji: {
+    fontSize: 20,
+  },
+  resultsButtonText: {
     color: '#FFFFFF',
     fontSize: 18,
     fontWeight: 'bold',
@@ -470,6 +578,10 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 400,
     alignItems: 'center',
+  },
+  modalEmoji: {
+    fontSize: 48,
+    marginBottom: 12,
   },
   modalTitle: {
     fontSize: 20,
