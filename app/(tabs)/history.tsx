@@ -16,7 +16,11 @@ import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
-import { apiGet } from '@/utils/api';
+import { apiGet, authenticatedDelete } from '@/utils/api';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import Swipeable from 'react-native-gesture-handler/Swipeable';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
 
 interface ComparisonHistoryItem {
   id: string;
@@ -37,6 +41,10 @@ export default function HistoryScreen() {
 
   const [history, setHistory] = useState<ComparisonHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deleteModal, setDeleteModal] = useState<{ visible: boolean; id: string | null }>({
+    visible: false,
+    id: null,
+  });
   const [errorModal, setErrorModal] = useState<{ visible: boolean; message: string }>({
     visible: false,
     message: '',
@@ -47,6 +55,7 @@ export default function HistoryScreen() {
   const textSecondaryColor = isDark ? colors.textSecondaryDark : colors.textSecondary;
   const cardColor = isDark ? colors.cardDark : colors.card;
   const primaryColor = isDark ? colors.primaryDark : colors.primary;
+  const deleteColor = '#FF3B30';
 
   useEffect(() => {
     loadHistory();
@@ -77,6 +86,35 @@ export default function HistoryScreen() {
     router.push(`/results/${id}`);
   };
 
+  const confirmDelete = (id: string) => {
+    console.log('User swiped to delete item:', id);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setDeleteModal({ visible: true, id });
+  };
+
+  const handleDelete = async () => {
+    const itemId = deleteModal.id;
+    if (!itemId) return;
+
+    console.log('[API] Deleting comparison:', itemId);
+    setDeleteModal({ visible: false, id: null });
+
+    try {
+      await authenticatedDelete(`/api/comparisons/${itemId}`);
+      console.log('[API] Comparison deleted successfully');
+      
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      
+      setHistory(prevHistory => prevHistory.filter(item => item.id !== itemId));
+    } catch (error) {
+      console.error('[API] Error deleting comparison:', error);
+      setErrorModal({
+        visible: true,
+        message: 'Impossibile eliminare il confronto. Riprova più tardi.',
+      });
+    }
+  };
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
@@ -98,39 +136,63 @@ export default function HistoryScreen() {
     return dateText;
   };
 
+  const renderRightActions = (itemId: string) => {
+    return (
+      <TouchableOpacity
+        style={[styles.deleteAction, { backgroundColor: deleteColor }]}
+        onPress={() => confirmDelete(itemId)}
+        activeOpacity={0.8}
+      >
+        <IconSymbol
+          ios_icon_name="trash.fill"
+          android_material_icon_name="delete"
+          size={24}
+          color="#FFFFFF"
+        />
+        <Text style={styles.deleteText}>Elimina</Text>
+      </TouchableOpacity>
+    );
+  };
+
   const renderItem = ({ item }: { item: ComparisonHistoryItem }) => {
     const winnerLabel = item.winner === 1 ? item.compareImage1Label : item.compareImage2Label;
     const dateText = formatDate(item.createdAt);
     
     return (
-      <TouchableOpacity
-        style={[styles.historyCard, { backgroundColor: cardColor }]}
-        onPress={() => handleItemPress(item.id)}
-        activeOpacity={0.7}
+      <Swipeable
+        renderRightActions={() => renderRightActions(item.id)}
+        overshootRight={false}
+        friction={2}
       >
-        <View style={styles.imagesRow}>
-          <Image source={{ uri: item.mainImageUrl }} style={styles.thumbnail} />
-          <View style={styles.vsContainer}>
-            <Text style={[styles.vsText, { color: textSecondaryColor }]}>VS</Text>
+        <TouchableOpacity
+          style={[styles.historyCard, { backgroundColor: cardColor }]}
+          onPress={() => handleItemPress(item.id)}
+          activeOpacity={0.7}
+        >
+          <View style={styles.imagesRow}>
+            <Image source={{ uri: item.mainImageUrl }} style={styles.thumbnail} />
+            <View style={styles.vsContainer}>
+              <Text style={[styles.vsText, { color: textSecondaryColor }]}>VS</Text>
+            </View>
+            <Image source={{ uri: item.compareImage1Url }} style={styles.thumbnail} />
+            <Image source={{ uri: item.compareImage2Url }} style={styles.thumbnail} />
           </View>
-          <Image source={{ uri: item.compareImage1Url }} style={styles.thumbnail} />
-          <Image source={{ uri: item.compareImage2Url }} style={styles.thumbnail} />
-        </View>
-        
-        <View style={styles.infoContainer}>
-          <View style={styles.labelRow}>
-            <Text style={[styles.mainLabel, { color: textColor }]}>{item.mainImageLabel}</Text>
-            <IconSymbol
-              ios_icon_name="arrow.right"
-              android_material_icon_name="arrow-forward"
-              size={16}
-              color={textSecondaryColor}
-            />
-            <Text style={[styles.winnerText, { color: primaryColor }]}>{winnerLabel}</Text>
+          
+          <View style={styles.infoContainer}>
+            <View style={styles.labelRow}>
+              <Text style={[styles.mainLabel, { color: textColor }]}>{item.mainImageLabel}</Text>
+              <IconSymbol
+                ios_icon_name="arrow.right"
+                android_material_icon_name="arrow-forward"
+                size={16}
+                color={textSecondaryColor}
+              />
+              <Text style={[styles.winnerText, { color: primaryColor }]}>{winnerLabel}</Text>
+            </View>
+            <Text style={[styles.dateText, { color: textSecondaryColor }]}>{dateText}</Text>
           </View>
-          <Text style={[styles.dateText, { color: textSecondaryColor }]}>{dateText}</Text>
-        </View>
-      </TouchableOpacity>
+        </TouchableOpacity>
+      </Swipeable>
     );
   };
 
@@ -146,64 +208,99 @@ export default function HistoryScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: bgColor }]} edges={['top']}>
-      <Stack.Screen options={{ headerShown: false }} />
-      
-      <View style={[styles.header, Platform.OS === 'android' && { paddingTop: 48 }]}>
-        <Text style={[styles.title, { color: textColor }]}>Cronologia</Text>
-        <Text style={[styles.subtitle, { color: textSecondaryColor }]}>
-          I tuoi confronti passati
-        </Text>
-      </View>
-
-      {history.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <IconSymbol
-            ios_icon_name="clock"
-            android_material_icon_name="history"
-            size={64}
-            color={textSecondaryColor}
-          />
-          <Text style={[styles.emptyText, { color: textSecondaryColor }]}>
-            Nessun confronto ancora
-          </Text>
-          <Text style={[styles.emptySubtext, { color: textSecondaryColor }]}>
-            Inizia un nuovo confronto per vedere i risultati qui
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaView style={[styles.container, { backgroundColor: bgColor }]} edges={['top']}>
+        <Stack.Screen options={{ headerShown: false }} />
+        
+        <View style={[styles.header, Platform.OS === 'android' && { paddingTop: 48 }]}>
+          <Text style={[styles.title, { color: textColor }]}>Cronologia</Text>
+          <Text style={[styles.subtitle, { color: textSecondaryColor }]}>
+            I tuoi confronti passati
           </Text>
         </View>
-      ) : (
-        <FlatList
-          data={history}
-          renderItem={renderItem}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-        />
-      )}
 
-      {/* Error Modal */}
-      <Modal
-        visible={errorModal.visible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setErrorModal({ visible: false, message: '' })}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: cardColor }]}>
-            <Text style={[styles.modalTitle, { color: textColor }]}>Errore</Text>
-            <Text style={[styles.modalMessage, { color: textSecondaryColor }]}>
-              {errorModal.message}
+        {history.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <IconSymbol
+              ios_icon_name="clock"
+              android_material_icon_name="history"
+              size={64}
+              color={textSecondaryColor}
+            />
+            <Text style={[styles.emptyText, { color: textSecondaryColor }]}>
+              Nessun confronto ancora
             </Text>
-            <TouchableOpacity
-              style={[styles.modalButton, { backgroundColor: primaryColor }]}
-              onPress={() => setErrorModal({ visible: false, message: '' })}
-            >
-              <Text style={styles.modalButtonText}>OK</Text>
-            </TouchableOpacity>
+            <Text style={[styles.emptySubtext, { color: textSecondaryColor }]}>
+              Inizia un nuovo confronto per vedere i risultati qui
+            </Text>
           </View>
-        </View>
-      </Modal>
-    </SafeAreaView>
+        ) : (
+          <FlatList
+            data={history}
+            renderItem={renderItem}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+          />
+        )}
+
+        {/* Delete Confirmation Modal */}
+        <Modal
+          visible={deleteModal.visible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setDeleteModal({ visible: false, id: null })}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { backgroundColor: cardColor }]}>
+              <Text style={styles.modalEmoji}>🗑️</Text>
+              <Text style={[styles.modalTitle, { color: textColor }]}>Elimina Confronto</Text>
+              <Text style={[styles.modalMessage, { color: textSecondaryColor }]}>
+                Sei sicuro di voler eliminare questo confronto? Questa azione non può essere annullata.
+              </Text>
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.cancelButton, { backgroundColor: cardColor, borderColor: textSecondaryColor }]}
+                  onPress={() => setDeleteModal({ visible: false, id: null })}
+                >
+                  <Text style={[styles.cancelButtonText, { color: textColor }]}>Annulla</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.deleteButton, { backgroundColor: deleteColor }]}
+                  onPress={handleDelete}
+                >
+                  <Text style={styles.deleteButtonText}>Elimina</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Error Modal */}
+        <Modal
+          visible={errorModal.visible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setErrorModal({ visible: false, message: '' })}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { backgroundColor: cardColor }]}>
+              <Text style={styles.modalEmoji}>⚠️</Text>
+              <Text style={[styles.modalTitle, { color: textColor }]}>Errore</Text>
+              <Text style={[styles.modalMessage, { color: textSecondaryColor }]}>
+                {errorModal.message}
+              </Text>
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: primaryColor }]}
+                onPress={() => setErrorModal({ visible: false, message: '' })}
+              >
+                <Text style={styles.modalButtonText}>OK</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      </SafeAreaView>
+    </GestureHandlerRootView>
   );
 }
 
@@ -291,9 +388,23 @@ const styles = StyleSheet.create({
   dateText: {
     fontSize: 12,
   },
+  deleteAction: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 100,
+    marginBottom: 16,
+    borderRadius: 16,
+    marginLeft: 8,
+  },
+  deleteText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: 'bold',
+    marginTop: 4,
+  },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
@@ -304,6 +415,10 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 400,
     alignItems: 'center',
+  },
+  modalEmoji: {
+    fontSize: 48,
+    marginBottom: 12,
   },
   modalTitle: {
     fontSize: 20,
@@ -316,11 +431,32 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     lineHeight: 22,
   },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
   modalButton: {
+    flex: 1,
     paddingVertical: 12,
-    paddingHorizontal: 32,
+    paddingHorizontal: 24,
     borderRadius: 12,
-    minWidth: 100,
+    alignItems: 'center',
+  },
+  cancelButton: {
+    borderWidth: 2,
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  deleteButton: {
+    // backgroundColor set inline
+  },
+  deleteButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
   modalButtonText: {
     color: '#FFFFFF',
