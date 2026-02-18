@@ -1,5 +1,11 @@
 
 import React, { useState } from 'react';
+import * as ImagePicker from 'expo-image-picker';
+import { IconSymbol } from '@/components/IconSymbol';
+import { LinearGradient } from 'expo-linear-gradient';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { colors } from '@/styles/commonStyles';
+import { Stack, useRouter } from 'expo-router';
 import {
   View,
   Text,
@@ -8,16 +14,9 @@ import {
   TouchableOpacity,
   Image,
   TextInput,
-  useColorScheme,
   ActivityIndicator,
   Modal,
 } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import * as ImagePicker from 'expo-image-picker';
-import { IconSymbol } from '@/components/IconSymbol';
-import { colors } from '@/styles/commonStyles';
-import { LinearGradient } from 'expo-linear-gradient';
 import { BACKEND_URL, authenticatedPost, getBearerToken } from '@/utils/api';
 
 interface ImageData {
@@ -26,27 +25,24 @@ interface ImageData {
 }
 
 export default function HomeScreen() {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
   const router = useRouter();
 
   const [mainImage, setMainImage] = useState<ImageData | null>(null);
   const [compareImage1, setCompareImage1] = useState<ImageData | null>(null);
   const [compareImage2, setCompareImage2] = useState<ImageData | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [comparisonId, setComparisonId] = useState<string | null>(null);
   const [errorModal, setErrorModal] = useState<{ visible: boolean; message: string }>({
     visible: false,
     message: '',
   });
 
-  const textColor = isDark ? colors.textDark : colors.text;
-  const textSecondaryColor = isDark ? colors.textSecondaryDark : colors.textSecondary;
-  const cardColor = isDark ? colors.cardDark : colors.card;
-  const primaryColor = isDark ? colors.primaryDark : colors.primary;
-  const secondaryColor = isDark ? colors.secondaryDark : colors.secondary;
-  const accentColor = isDark ? colors.accentDark : colors.accent;
-  const purpleColor = isDark ? colors.purpleDark : colors.purple;
+  const textColor = colors.text;
+  const textSecondaryColor = colors.textSecondary;
+  const cardColor = colors.card;
+  const primaryColor = colors.primary;
+  const secondaryColor = colors.secondary;
+  const accentColor = colors.accent;
+  const purpleColor = colors.purple;
 
   const showError = (message: string) => {
     setErrorModal({ visible: true, message });
@@ -143,7 +139,6 @@ export default function HomeScreen() {
     }
 
     setIsAnalyzing(true);
-    setComparisonId(null);
 
     try {
       console.log('[API] Uploading images...');
@@ -169,7 +164,9 @@ export default function HomeScreen() {
       });
       
       console.log('[API] Comparison result:', result);
-      setComparisonId(result.comparisonId);
+      
+      // Navigate directly to results
+      router.push(`/results/${result.comparisonId}`);
     } catch (error: any) {
       console.error('Error analyzing images:', error);
       const errorMessage = error?.message || 'Si è verificato un errore durante l\'analisi. Riprova.';
@@ -179,23 +176,11 @@ export default function HomeScreen() {
     }
   };
 
-  const handleViewResults = () => {
-    console.log('User tapped View Results button');
-    if (comparisonId) {
-      router.push(`/results/${comparisonId}`);
-    }
-  };
-
   const canAnalyze = mainImage && compareImage1 && compareImage2 && !isAnalyzing;
-  const canViewResults = comparisonId && !isAnalyzing;
-
-  const gradientColors = isDark 
-    ? ['#1A0B2E', '#2D1B4E', '#1A0B2E']
-    : ['#FFE5F1', '#E5F4FF', '#FFF5E5', '#F0E5FF'];
 
   return (
     <LinearGradient
-      colors={gradientColors}
+      colors={[colors.background, colors.backgroundDark]}
       style={styles.gradientContainer}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
@@ -224,10 +209,10 @@ export default function HomeScreen() {
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionEmoji}>📸</Text>
-              <Text style={[styles.sectionTitle, { color: primaryColor }]}>Foto Principale</Text>
+              <Text style={[styles.sectionTitle, { color: secondaryColor }]}>Foto Principale</Text>
             </View>
             <TouchableOpacity
-              style={[styles.imageCard, { backgroundColor: cardColor, borderColor: primaryColor }]}
+              style={[styles.imageCard, { backgroundColor: cardColor, borderColor: secondaryColor }]}
               onPress={() => pickImage('main')}
               activeOpacity={0.7}
             >
@@ -239,9 +224,9 @@ export default function HomeScreen() {
                     ios_icon_name="photo"
                     android_material_icon_name="add-photo-alternate"
                     size={48}
-                    color={primaryColor}
+                    color={secondaryColor}
                   />
-                  <Text style={[styles.placeholderText, { color: primaryColor }]}>
+                  <Text style={[styles.placeholderText, { color: secondaryColor }]}>
                     Tocca per caricare
                   </Text>
                 </View>
@@ -249,7 +234,7 @@ export default function HomeScreen() {
             </TouchableOpacity>
             {mainImage && (
               <TextInput
-                style={[styles.labelInput, { backgroundColor: cardColor, color: textColor, borderColor: primaryColor }]}
+                style={[styles.labelInput, { backgroundColor: cardColor, color: textColor, borderColor: secondaryColor }]}
                 placeholder="Chi è? (es. Io, Mamma, Marco)"
                 placeholderTextColor={textSecondaryColor}
                 value={mainImage.label}
@@ -267,7 +252,7 @@ export default function HomeScreen() {
             <View style={styles.compareRow}>
               <View style={styles.compareContainer}>
                 <TouchableOpacity
-                  style={[styles.compareCard, { backgroundColor: cardColor, borderColor: secondaryColor }]}
+                  style={[styles.compareCard, { backgroundColor: cardColor, borderColor: accentColor }]}
                   onPress={() => pickImage('compare1')}
                   activeOpacity={0.7}
                 >
@@ -279,15 +264,15 @@ export default function HomeScreen() {
                         ios_icon_name="photo"
                         android_material_icon_name="add-photo-alternate"
                         size={32}
-                        color={secondaryColor}
+                        color={accentColor}
                       />
-                      <Text style={[styles.compareNumber, { color: secondaryColor }]}>1</Text>
+                      <Text style={[styles.compareNumber, { color: accentColor }]}>1</Text>
                     </View>
                   )}
                 </TouchableOpacity>
                 {compareImage1 && (
                   <TextInput
-                    style={[styles.compareLabelInput, { backgroundColor: cardColor, color: textColor, borderColor: secondaryColor }]}
+                    style={[styles.compareLabelInput, { backgroundColor: cardColor, color: textColor, borderColor: accentColor }]}
                     placeholder="Nome"
                     placeholderTextColor={textSecondaryColor}
                     value={compareImage1.label}
@@ -339,48 +324,28 @@ export default function HomeScreen() {
             activeOpacity={0.8}
           >
             <LinearGradient
-              colors={canAnalyze ? [primaryColor, secondaryColor] : ['#CCCCCC', '#999999']}
+              colors={canAnalyze ? [secondaryColor, accentColor] : ['#666666', '#444444']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
               style={styles.analyzeGradient}
             >
               {isAnalyzing ? (
                 <>
-                  <ActivityIndicator color="#FFFFFF" size="small" />
-                  <Text style={styles.analyzeButtonText}>Analisi in corso...</Text>
+                  <ActivityIndicator color={colors.background} size="small" />
+                  <Text style={[styles.analyzeButtonText, { color: colors.background }]}>
+                    Analisi in corso...
+                  </Text>
                 </>
               ) : (
                 <>
                   <Text style={styles.analyzeButtonEmoji}>🔍</Text>
-                  <Text style={styles.analyzeButtonText}>Analizza Ora</Text>
+                  <Text style={[styles.analyzeButtonText, { color: colors.background }]}>
+                    Analizza Ora
+                  </Text>
                 </>
               )}
             </LinearGradient>
           </TouchableOpacity>
-
-          {canViewResults && (
-            <TouchableOpacity
-              style={styles.resultsButton}
-              onPress={handleViewResults}
-              activeOpacity={0.8}
-            >
-              <LinearGradient
-                colors={[accentColor, colors.orange]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.resultsGradient}
-              >
-                <Text style={styles.resultsButtonEmoji}>🎉</Text>
-                <Text style={styles.resultsButtonText}>Vedi Risultati</Text>
-                <IconSymbol
-                  ios_icon_name="arrow.right"
-                  android_material_icon_name="arrow-forward"
-                  size={20}
-                  color="#FFFFFF"
-                />
-              </LinearGradient>
-            </TouchableOpacity>
-          )}
 
           <View style={{ height: 100 }} />
         </ScrollView>
@@ -399,10 +364,10 @@ export default function HomeScreen() {
                 {errorModal.message}
               </Text>
               <TouchableOpacity
-                style={[styles.modalButton, { backgroundColor: primaryColor }]}
+                style={[styles.modalButton, { backgroundColor: secondaryColor }]}
                 onPress={() => setErrorModal({ visible: false, message: '' })}
               >
-                <Text style={styles.modalButtonText}>OK</Text>
+                <Text style={[styles.modalButtonText, { color: colors.background }]}>OK</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -462,7 +427,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 20,
-    fontWeight: '600',
+    fontWeight: 'bold',
   },
   imageCard: {
     borderRadius: 20,
@@ -483,7 +448,7 @@ const styles = StyleSheet.create({
   placeholderText: {
     marginTop: 12,
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: 'bold',
   },
   labelInput: {
     borderRadius: 12,
@@ -549,38 +514,12 @@ const styles = StyleSheet.create({
     fontSize: 20,
   },
   analyzeButtonText: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  resultsButton: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    marginTop: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  resultsGradient: {
-    paddingVertical: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 8,
-  },
-  resultsButtonEmoji: {
-    fontSize: 20,
-  },
-  resultsButtonText: {
-    color: '#FFFFFF',
     fontSize: 18,
     fontWeight: 'bold',
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
@@ -614,9 +553,8 @@ const styles = StyleSheet.create({
     minWidth: 100,
   },
   modalButtonText: {
-    color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: 'bold',
     textAlign: 'center',
   },
 });

@@ -2,32 +2,32 @@
 import { StyleSheet } from 'react-native';
 
 export const colors = {
-  // Fun, vibrant color palette for a playful comparison app
-  background: '#FFF5F8',
-  backgroundDark: '#0F0F0F',
-  text: '#1A1A1A',
-  textDark: '#F5F5F5',
-  textSecondary: '#666666',
-  textSecondaryDark: '#A0A0A0',
-  primary: '#FF6B9D', // Playful pink
-  primaryDark: '#FF4081',
-  secondary: '#4ECDC4', // Turquoise
-  secondaryDark: '#26A69A',
-  accent: '#FFD93D', // Bright yellow
-  accentDark: '#FFC107',
-  purple: '#9B59B6', // Fun purple
-  purpleDark: '#8E44AD',
-  orange: '#FF9F43', // Vibrant orange
-  orangeDark: '#FF7F00',
-  card: '#FFFFFF',
-  cardDark: '#1E1E1E',
-  highlight: '#FF8FAB',
-  highlightDark: '#FF5C8D',
-  border: '#FFE0E9',
-  borderDark: '#333333',
-  success: '#4CAF50',
-  error: '#F44336',
-  warning: '#FF9800',
+  // Fun blue and yellow theme for a playful comparison app
+  background: '#1E3A8A', // Deep blue
+  backgroundDark: '#0F172A', // Darker blue
+  text: '#FCD34D', // Bright yellow
+  textDark: '#FDE68A', // Light yellow
+  textSecondary: '#93C5FD', // Light blue
+  textSecondaryDark: '#60A5FA', // Medium blue
+  primary: '#3B82F6', // Vibrant blue
+  primaryDark: '#2563EB', // Darker vibrant blue
+  secondary: '#FCD34D', // Yellow
+  secondaryDark: '#FBBF24', // Darker yellow
+  accent: '#F59E0B', // Orange-yellow
+  accentDark: '#D97706', // Darker orange
+  purple: '#8B5CF6', // Fun purple
+  purpleDark: '#7C3AED', // Darker purple
+  orange: '#FB923C', // Vibrant orange
+  orangeDark: '#F97316', // Darker orange
+  card: '#1E40AF', // Blue card
+  cardDark: '#1E3A8A', // Darker blue card
+  highlight: '#60A5FA', // Light blue highlight
+  highlightDark: '#3B82F6', // Blue highlight
+  border: '#3B82F6', // Blue border
+  borderDark: '#2563EB', // Darker blue border
+  success: '#10B981', // Green
+  error: '#EF4444', // Red
+  warning: '#F59E0B', // Orange
 };
 
 export const commonStyles = StyleSheet.create({

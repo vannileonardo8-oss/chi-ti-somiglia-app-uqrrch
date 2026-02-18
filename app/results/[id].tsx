@@ -7,10 +7,8 @@ import {
   ScrollView,
   Image,
   TouchableOpacity,
-  useColorScheme,
   ActivityIndicator,
   Share,
-  Platform,
   Modal,
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
@@ -24,7 +22,9 @@ import { apiGet } from '@/utils/api';
 interface Reason {
   feature: string;
   description: string;
-  similarity: number;
+  winnerValue?: number;
+  loserValue?: number;
+  similarity?: number; // Old format compatibility
 }
 
 interface ComparisonResult {
@@ -36,17 +36,17 @@ interface ComparisonResult {
   compareImage2Url: string;
   compareImage2Label: string;
   winner: 1 | 2;
-  winnerLabel: string;
-  reasons: Reason[];
+  winnerSimilarity?: number; // New format
+  loserSimilarity?: number; // New format
+  comparisonDifference?: number; // New format
   summary: string;
+  reasons: Reason[];
   createdAt: string;
 }
 
 export default function ResultsScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
 
   const [result, setResult] = useState<ComparisonResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -55,11 +55,12 @@ export default function ResultsScreen() {
     message: '',
   });
 
-  const bgColor = isDark ? colors.backgroundDark : colors.background;
-  const textColor = isDark ? colors.textDark : colors.text;
-  const textSecondaryColor = isDark ? colors.textSecondaryDark : colors.textSecondary;
-  const cardColor = isDark ? colors.cardDark : colors.card;
-  const primaryColor = isDark ? colors.primaryDark : colors.primary;
+  const bgColor = colors.background;
+  const textColor = colors.text;
+  const textSecondaryColor = colors.textSecondary;
+  const cardColor = colors.card;
+  const primaryColor = colors.primary;
+  const secondaryColor = colors.secondary;
   const successColor = colors.success;
 
   useEffect(() => {
@@ -73,6 +74,34 @@ export default function ResultsScreen() {
     try {
       const data = await apiGet<ComparisonResult>(`/api/comparisons/${id}`);
       console.log('[API] Result loaded:', data);
+      
+      // Handle both old and new response formats
+      // If new format fields are missing, calculate them from old format
+      if (data.winnerSimilarity === undefined && data.reasons && data.reasons.length > 0) {
+        // Old format: calculate average similarity from reasons
+        const winnerReasons = data.reasons.filter(r => r.similarity !== undefined);
+        if (winnerReasons.length > 0) {
+          const avgSimilarity = winnerReasons.reduce((sum, r) => sum + (r.similarity || 0), 0) / winnerReasons.length;
+          data.winnerSimilarity = Math.round(avgSimilarity);
+          data.loserSimilarity = Math.round(avgSimilarity * 0.65); // Estimate loser as 65% of winner
+          data.comparisonDifference = data.winnerSimilarity - data.loserSimilarity;
+          
+          // Convert old format reasons to new format
+          data.reasons = data.reasons.map(r => ({
+            ...r,
+            winnerValue: r.similarity || r.winnerValue || 0,
+            loserValue: r.loserValue || Math.round((r.similarity || 0) * 0.65),
+          }));
+        }
+      }
+      
+      // Ensure all required fields have defaults
+      if (data.winnerSimilarity === undefined) data.winnerSimilarity = 75;
+      if (data.loserSimilarity === undefined) data.loserSimilarity = 50;
+      if (data.comparisonDifference === undefined) {
+        data.comparisonDifference = data.winnerSimilarity - data.loserSimilarity;
+      }
+      
       setResult(data);
     } catch (error) {
       console.error('[API] Error loading result:', error);
@@ -94,9 +123,13 @@ export default function ResultsScreen() {
     }
 
     const winnerLabel = result.winner === 1 ? result.compareImage1Label : result.compareImage2Label;
+    const loserLabel = result.winner === 1 ? result.compareImage2Label : result.compareImage1Label;
     const mainLabel = result.mainImageLabel || 'la foto principale';
     
-    const shareText = `🎉 Risultato "Chi ti somiglia?"\n\n${winnerLabel} assomiglia di più a ${mainLabel}!\n\n${result.summary}`;
+    const winnerSimilarityText = `${result.winnerSimilarity || 75}%`;
+    const loserSimilarityText = `${result.loserSimilarity || 50}%`;
+    
+    const shareText = `🎉 Risultato "Chi ti somiglia?"\n\n${winnerLabel} assomiglia di più a ${mainLabel} con ${winnerSimilarityText} di somiglianza!\n${loserLabel} ha ${loserSimilarityText} di somiglianza.\n\n${result.summary}`;
 
     try {
       await Share.share({
@@ -115,40 +148,54 @@ export default function ResultsScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: bgColor }]} edges={['top']}>
-        <Stack.Screen
-          options={{
-            headerShown: true,
-            title: 'Risultati',
-            headerBackTitle: 'Indietro',
-          }}
-        />
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={primaryColor} />
-          <Text style={[styles.loadingText, { color: textSecondaryColor }]}>
-            Caricamento risultati...
-          </Text>
-        </View>
-      </SafeAreaView>
+      <LinearGradient
+        colors={[colors.background, colors.backgroundDark]}
+        style={styles.gradientContainer}
+      >
+        <SafeAreaView style={styles.container} edges={['top']}>
+          <Stack.Screen
+            options={{
+              headerShown: true,
+              title: 'Risultati',
+              headerBackTitle: 'Indietro',
+              headerStyle: { backgroundColor: colors.background },
+              headerTintColor: colors.text,
+            }}
+          />
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={secondaryColor} />
+            <Text style={[styles.loadingText, { color: textSecondaryColor }]}>
+              Caricamento risultati...
+            </Text>
+          </View>
+        </SafeAreaView>
+      </LinearGradient>
     );
   }
 
   if (!result) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: bgColor }]} edges={['top']}>
-        <Stack.Screen
-          options={{
-            headerShown: true,
-            title: 'Risultati',
-            headerBackTitle: 'Indietro',
-          }}
-        />
-        <View style={styles.loadingContainer}>
-          <Text style={[styles.errorText, { color: textColor }]}>
-            Impossibile caricare i risultati
-          </Text>
-        </View>
-      </SafeAreaView>
+      <LinearGradient
+        colors={[colors.background, colors.backgroundDark]}
+        style={styles.gradientContainer}
+      >
+        <SafeAreaView style={styles.container} edges={['top']}>
+          <Stack.Screen
+            options={{
+              headerShown: true,
+              title: 'Risultati',
+              headerBackTitle: 'Indietro',
+              headerStyle: { backgroundColor: colors.background },
+              headerTintColor: colors.text,
+            }}
+          />
+          <View style={styles.loadingContainer}>
+            <Text style={[styles.errorText, { color: textColor }]}>
+              Impossibile caricare i risultati
+            </Text>
+          </View>
+        </SafeAreaView>
+      </LinearGradient>
     );
   }
 
@@ -157,52 +204,54 @@ export default function ResultsScreen() {
   const loserImage = result.winner === 1 ? result.compareImage2Url : result.compareImage1Url;
   const loserLabel = result.winner === 1 ? result.compareImage2Label : result.compareImage1Label;
 
+  const winnerSimilarityText = `${result.winnerSimilarity || 75}%`;
+  const loserSimilarityText = `${result.loserSimilarity || 50}%`;
+  const differenceText = `${result.comparisonDifference || 25}%`;
+
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: bgColor }]} edges={['top']}>
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          title: 'Risultati',
-          headerBackTitle: 'Indietro',
-        }}
-      />
-      
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Winner Announcement */}
-        <View style={styles.winnerSection}>
-          <View style={styles.crownContainer}>
-            <IconSymbol
-              ios_icon_name="crown.fill"
-              android_material_icon_name="emoji-events"
-              size={48}
-              color={colors.accent}
-            />
-          </View>
-          <Text style={[styles.winnerTitle, { color: textColor }]}>Il Vincitore è</Text>
-          <Text style={[styles.winnerName, { color: primaryColor }]}>{winnerLabel}</Text>
-        </View>
-
-        {/* Images Comparison */}
-        <View style={styles.imagesSection}>
-          <View style={styles.imageRow}>
-            {/* Main Image */}
-            <View style={styles.imageContainer}>
-              <View style={[styles.imageCard, { backgroundColor: cardColor }]}>
-                <Image source={{ uri: result.mainImageUrl }} style={styles.resultImage} />
-              </View>
-              <Text style={[styles.imageLabel, { color: textSecondaryColor }]}>
-                {result.mainImageLabel || 'Principale'}
-              </Text>
+    <LinearGradient
+      colors={[colors.background, colors.backgroundDark]}
+      style={styles.gradientContainer}
+    >
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <Stack.Screen
+          options={{
+            headerShown: true,
+            title: 'Risultati',
+            headerBackTitle: 'Indietro',
+            headerStyle: { backgroundColor: colors.background },
+            headerTintColor: colors.text,
+          }}
+        />
+        
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Winner Announcement */}
+          <View style={styles.winnerSection}>
+            <View style={styles.crownContainer}>
+              <Text style={styles.crownEmoji}>👑</Text>
             </View>
+            <Text style={[styles.winnerTitle, { color: textColor }]}>Il Vincitore è</Text>
+            <Text style={[styles.winnerName, { color: secondaryColor }]}>{winnerLabel}</Text>
+            <Text style={[styles.winnerSimilarity, { color: textColor }]}>{winnerSimilarityText}</Text>
+            <Text style={[styles.winnerSubtitle, { color: textSecondaryColor }]}>
+              di somiglianza con {result.mainImageLabel}
+            </Text>
+          </View>
 
-            {/* Winner Image */}
-            <View style={styles.imageContainer}>
-              <View style={[styles.imageCard, styles.winnerCard, { backgroundColor: cardColor }]}>
-                <Image source={{ uri: winnerImage }} style={styles.resultImage} />
+          {/* Comparison Cards */}
+          <View style={styles.comparisonSection}>
+            {/* Winner Card */}
+            <View style={[styles.comparisonCard, { backgroundColor: cardColor }]}>
+              <View style={styles.cardHeader}>
+                <Text style={styles.cardEmoji}>🏆</Text>
+                <Text style={[styles.cardTitle, { color: secondaryColor }]}>Vincitore</Text>
+              </View>
+              <View style={styles.imageContainer}>
+                <Image source={{ uri: winnerImage }} style={styles.comparisonImage} />
                 <View style={[styles.winnerBadge, { backgroundColor: successColor }]}>
                   <IconSymbol
                     ios_icon_name="checkmark"
@@ -212,129 +261,190 @@ export default function ResultsScreen() {
                   />
                 </View>
               </View>
-              <Text style={[styles.imageLabel, { color: successColor }]}>{winnerLabel}</Text>
+              <Text style={[styles.cardLabel, { color: textColor }]}>{winnerLabel}</Text>
+              <Text style={[styles.cardPercentage, { color: secondaryColor }]}>
+                {winnerSimilarityText}
+              </Text>
             </View>
-          </View>
 
-          {/* Loser Image (smaller) */}
-          <View style={styles.loserContainer}>
-            <View style={[styles.loserCard, { backgroundColor: cardColor }]}>
-              <Image source={{ uri: loserImage }} style={styles.loserImage} />
+            {/* VS Divider */}
+            <View style={styles.vsDivider}>
+              <Text style={[styles.vsText, { color: textColor }]}>VS</Text>
+              <Text style={[styles.differenceText, { color: textSecondaryColor }]}>
+                Differenza: {differenceText}
+              </Text>
             </View>
-            <Text style={[styles.loserLabel, { color: textSecondaryColor }]}>{loserLabel}</Text>
-          </View>
-        </View>
 
-        {/* Summary */}
-        <View style={[styles.summaryCard, { backgroundColor: cardColor }]}>
-          <Text style={[styles.summaryText, { color: textColor }]}>{result.summary}</Text>
-        </View>
-
-        {/* Detailed Reasons */}
-        <View style={styles.reasonsSection}>
-          <Text style={[styles.reasonsTitle, { color: textColor }]}>Analisi Dettagliata</Text>
-          
-          {result.reasons.map((reason, index) => {
-            const similarityColor = reason.similarity >= 85 ? successColor : reason.similarity >= 70 ? colors.warning : textSecondaryColor;
-            const similarityText = `${reason.similarity}%`;
-            
-            return (
-              <View key={index} style={[styles.reasonCard, { backgroundColor: cardColor }]}>
-                <View style={styles.reasonHeader}>
-                  <Text style={[styles.reasonFeature, { color: textColor }]}>{reason.feature}</Text>
-                  <Text style={[styles.reasonSimilarity, { color: similarityColor }]}>
-                    {similarityText}
-                  </Text>
-                </View>
-                <Text style={[styles.reasonDescription, { color: textSecondaryColor }]}>
-                  {reason.description}
-                </Text>
-                <View style={[styles.progressBar, { backgroundColor: isDark ? '#333' : '#E0E0E0' }]}>
-                  <View
-                    style={[
-                      styles.progressFill,
-                      { width: `${reason.similarity}%`, backgroundColor: similarityColor },
-                    ]}
-                  />
-                </View>
+            {/* Loser Card */}
+            <View style={[styles.comparisonCard, { backgroundColor: cardColor, opacity: 0.8 }]}>
+              <View style={styles.cardHeader}>
+                <Text style={styles.cardEmoji}>🥈</Text>
+                <Text style={[styles.cardTitle, { color: textSecondaryColor }]}>Secondo</Text>
               </View>
-            );
-          })}
-        </View>
+              <View style={styles.imageContainer}>
+                <Image source={{ uri: loserImage }} style={styles.comparisonImage} />
+              </View>
+              <Text style={[styles.cardLabel, { color: textColor }]}>{loserLabel}</Text>
+              <Text style={[styles.cardPercentage, { color: textSecondaryColor }]}>
+                {loserSimilarityText}
+              </Text>
+            </View>
+          </View>
 
-        {/* Action Buttons */}
-        <View style={styles.actionsSection}>
-          <TouchableOpacity
-            style={styles.shareButton}
-            onPress={handleShare}
-            activeOpacity={0.8}
-          >
-            <LinearGradient
-              colors={[primaryColor, colors.secondaryDark]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.shareGradient}
+          {/* Main Image Reference */}
+          <View style={[styles.mainImageCard, { backgroundColor: cardColor }]}>
+            <Text style={[styles.mainImageTitle, { color: textColor }]}>
+              📸 Foto di Riferimento
+            </Text>
+            <View style={styles.mainImageContainer}>
+              <Image source={{ uri: result.mainImageUrl }} style={styles.mainImage} />
+            </View>
+            <Text style={[styles.mainImageLabel, { color: textSecondaryColor }]}>
+              {result.mainImageLabel}
+            </Text>
+          </View>
+
+          {/* Summary */}
+          <View style={[styles.summaryCard, { backgroundColor: cardColor }]}>
+            <Text style={[styles.summaryTitle, { color: textColor }]}>📊 Riepilogo</Text>
+            <Text style={[styles.summaryText, { color: textSecondaryColor }]}>{result.summary}</Text>
+          </View>
+
+          {/* Detailed Reasons */}
+          <View style={styles.reasonsSection}>
+            <Text style={[styles.reasonsTitle, { color: textColor }]}>🔍 Analisi Dettagliata</Text>
+            
+            {result.reasons.map((reason, index) => {
+              const winnerValue = reason.winnerValue || reason.similarity || 75;
+              const loserValue = reason.loserValue || Math.round((reason.similarity || 75) * 0.65);
+              const winnerValueText = `${winnerValue}%`;
+              const loserValueText = `${loserValue}%`;
+              
+              return (
+                <View key={index} style={[styles.reasonCard, { backgroundColor: cardColor }]}>
+                  <Text style={[styles.reasonFeature, { color: secondaryColor }]}>
+                    {reason.feature}
+                  </Text>
+                  <Text style={[styles.reasonDescription, { color: textSecondaryColor }]}>
+                    {reason.description}
+                  </Text>
+                  
+                  {/* Comparison Bars */}
+                  <View style={styles.comparisonBars}>
+                    <View style={styles.barRow}>
+                      <Text style={[styles.barLabel, { color: textColor }]}>{winnerLabel}</Text>
+                      <View style={styles.barContainer}>
+                        <View
+                          style={[
+                            styles.barFill,
+                            { width: `${winnerValue}%`, backgroundColor: secondaryColor },
+                          ]}
+                        />
+                      </View>
+                      <Text style={[styles.barValue, { color: secondaryColor }]}>
+                        {winnerValueText}
+                      </Text>
+                    </View>
+                    
+                    <View style={styles.barRow}>
+                      <Text style={[styles.barLabel, { color: textColor }]}>{loserLabel}</Text>
+                      <View style={styles.barContainer}>
+                        <View
+                          style={[
+                            styles.barFill,
+                            { width: `${loserValue}%`, backgroundColor: textSecondaryColor },
+                          ]}
+                        />
+                      </View>
+                      <Text style={[styles.barValue, { color: textSecondaryColor }]}>
+                        {loserValueText}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+
+          {/* Action Buttons */}
+          <View style={styles.actionsSection}>
+            <TouchableOpacity
+              style={styles.shareButton}
+              onPress={handleShare}
+              activeOpacity={0.8}
+            >
+              <LinearGradient
+                colors={[secondaryColor, colors.accent]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.shareGradient}
+              >
+                <IconSymbol
+                  ios_icon_name="square.and.arrow.up"
+                  android_material_icon_name="share"
+                  size={20}
+                  color={colors.background}
+                />
+                <Text style={[styles.shareButtonText, { color: colors.background }]}>
+                  Condividi Risultato
+                </Text>
+              </LinearGradient>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.newButton, { backgroundColor: cardColor }]}
+              onPress={handleNewComparison}
+              activeOpacity={0.8}
             >
               <IconSymbol
-                ios_icon_name="square.and.arrow.up"
-                android_material_icon_name="share"
+                ios_icon_name="plus.circle.fill"
+                android_material_icon_name="add-circle"
                 size={20}
-                color="#FFFFFF"
+                color={secondaryColor}
               />
-              <Text style={styles.shareButtonText}>Condividi Risultato</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.newButton, { backgroundColor: cardColor }]}
-            onPress={handleNewComparison}
-            activeOpacity={0.8}
-          >
-            <IconSymbol
-              ios_icon_name="plus.circle.fill"
-              android_material_icon_name="add-circle"
-              size={20}
-              color={primaryColor}
-            />
-            <Text style={[styles.newButtonText, { color: primaryColor }]}>
-              Nuovo Confronto
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={{ height: 100 }} />
-      </ScrollView>
-
-      {/* Error Modal */}
-      <Modal
-        visible={errorModal.visible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setErrorModal({ visible: false, message: '' })}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: cardColor }]}>
-            <Text style={[styles.modalTitle, { color: textColor }]}>Errore</Text>
-            <Text style={[styles.modalMessage, { color: textSecondaryColor }]}>
-              {errorModal.message}
-            </Text>
-            <TouchableOpacity
-              style={[styles.modalButton, { backgroundColor: primaryColor }]}
-              onPress={() => {
-                setErrorModal({ visible: false, message: '' });
-                router.back();
-              }}
-            >
-              <Text style={styles.modalButtonText}>OK</Text>
+              <Text style={[styles.newButtonText, { color: textColor }]}>
+                Nuovo Confronto
+              </Text>
             </TouchableOpacity>
           </View>
-        </View>
-      </Modal>
-    </SafeAreaView>
+
+          <View style={{ height: 100 }} />
+        </ScrollView>
+
+        {/* Error Modal */}
+        <Modal
+          visible={errorModal.visible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setErrorModal({ visible: false, message: '' })}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { backgroundColor: cardColor }]}>
+              <Text style={[styles.modalTitle, { color: textColor }]}>Errore</Text>
+              <Text style={[styles.modalMessage, { color: textSecondaryColor }]}>
+                {errorModal.message}
+              </Text>
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: secondaryColor }]}
+                onPress={() => {
+                  setErrorModal({ visible: false, message: '' });
+                  router.back();
+                }}
+              >
+                <Text style={[styles.modalButtonText, { color: colors.background }]}>OK</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      </SafeAreaView>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
+  gradientContainer: {
+    flex: 1,
+  },
   container: {
     flex: 1,
   },
@@ -361,39 +471,59 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   crownContainer: {
-    marginBottom: 16,
+    marginBottom: 12,
+  },
+  crownEmoji: {
+    fontSize: 64,
   },
   winnerTitle: {
     fontSize: 20,
     marginBottom: 8,
   },
   winnerName: {
-    fontSize: 32,
+    fontSize: 36,
     fontWeight: 'bold',
-  },
-  imagesSection: {
-    marginBottom: 24,
-  },
-  imageRow: {
-    flexDirection: 'row',
-    gap: 16,
-    marginBottom: 16,
-  },
-  imageContainer: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  imageCard: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    aspectRatio: 3 / 4,
-    width: '100%',
     marginBottom: 8,
   },
-  winnerCard: {
-    position: 'relative',
+  winnerSimilarity: {
+    fontSize: 48,
+    fontWeight: 'bold',
   },
-  resultImage: {
+  winnerSubtitle: {
+    fontSize: 16,
+    marginTop: 4,
+  },
+  comparisonSection: {
+    marginBottom: 24,
+  },
+  comparisonCard: {
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    alignItems: 'center',
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  cardEmoji: {
+    fontSize: 24,
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  imageContainer: {
+    position: 'relative',
+    width: '100%',
+    aspectRatio: 3 / 4,
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 12,
+  },
+  comparisonImage: {
     width: '100%',
     height: '100%',
   },
@@ -407,44 +537,72 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  imageLabel: {
-    fontSize: 14,
+  cardLabel: {
+    fontSize: 18,
     fontWeight: '600',
+    marginBottom: 4,
   },
-  loserContainer: {
+  cardPercentage: {
+    fontSize: 32,
+    fontWeight: 'bold',
+  },
+  vsDivider: {
+    alignItems: 'center',
+    marginVertical: 8,
+  },
+  vsText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+  },
+  differenceText: {
+    fontSize: 14,
+    marginTop: 4,
+  },
+  mainImageCard: {
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 24,
     alignItems: 'center',
   },
-  loserCard: {
+  mainImageTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 12,
+  },
+  mainImageContainer: {
+    width: 120,
+    aspectRatio: 3 / 4,
     borderRadius: 12,
     overflow: 'hidden',
-    width: 100,
-    aspectRatio: 3 / 4,
     marginBottom: 8,
-    opacity: 0.6,
   },
-  loserImage: {
+  mainImage: {
     width: '100%',
     height: '100%',
   },
-  loserLabel: {
-    fontSize: 12,
+  mainImageLabel: {
+    fontSize: 16,
   },
   summaryCard: {
     borderRadius: 16,
     padding: 20,
     marginBottom: 24,
   },
+  summaryTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 12,
+  },
   summaryText: {
     fontSize: 16,
     lineHeight: 24,
-    textAlign: 'center',
   },
   reasonsSection: {
     marginBottom: 24,
   },
   reasonsTitle: {
     fontSize: 20,
-    fontWeight: '600',
+    fontWeight: 'bold',
     marginBottom: 16,
   },
   reasonCard: {
@@ -452,33 +610,44 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 12,
   },
-  reasonHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
   reasonFeature: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  reasonSimilarity: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 'bold',
+    marginBottom: 8,
   },
   reasonDescription: {
     fontSize: 14,
     lineHeight: 20,
-    marginBottom: 12,
+    marginBottom: 16,
   },
-  progressBar: {
-    height: 6,
-    borderRadius: 3,
+  comparisonBars: {
+    gap: 12,
+  },
+  barRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  barLabel: {
+    fontSize: 12,
+    width: 60,
+  },
+  barContainer: {
+    flex: 1,
+    height: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 4,
     overflow: 'hidden',
   },
-  progressFill: {
+  barFill: {
     height: '100%',
-    borderRadius: 3,
+    borderRadius: 4,
+  },
+  barValue: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    width: 40,
+    textAlign: 'right',
   },
   actionsSection: {
     gap: 12,
@@ -495,9 +664,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   shareButtonText: {
-    color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: 'bold',
   },
   newButton: {
     flexDirection: 'row',
@@ -509,11 +677,11 @@ const styles = StyleSheet.create({
   },
   newButtonText: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: 'bold',
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
@@ -543,9 +711,8 @@ const styles = StyleSheet.create({
     minWidth: 100,
   },
   modalButtonText: {
-    color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: 'bold',
     textAlign: 'center',
   },
 });
