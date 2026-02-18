@@ -86,6 +86,11 @@ export default function HistoryScreen() {
     router.push(`/results/${id}`);
   };
 
+  const handleBackPress = () => {
+    console.log('User tapped back button from history');
+    router.push('/(tabs)/(home)');
+  };
+
   const confirmDelete = (id: string) => {
     console.log('User swiped to delete item:', id);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -213,10 +218,24 @@ export default function HistoryScreen() {
         <Stack.Screen options={{ headerShown: false }} />
         
         <View style={[styles.header, Platform.OS === 'android' && { paddingTop: 48 }]}>
-          <Text style={[styles.title, { color: textColor }]}>Cronologia</Text>
-          <Text style={[styles.subtitle, { color: textSecondaryColor }]}>
-            I tuoi confronti passati
-          </Text>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={handleBackPress}
+            activeOpacity={0.7}
+          >
+            <IconSymbol
+              ios_icon_name="arrow.left"
+              android_material_icon_name="arrow-back"
+              size={24}
+              color={textColor}
+            />
+          </TouchableOpacity>
+          <View style={styles.headerTextContainer}>
+            <Text style={[styles.title, { color: textColor }]}>Cronologia</Text>
+            <Text style={[styles.subtitle, { color: textSecondaryColor }]}>
+              I tuoi confronti passati
+            </Text>
+          </View>
         </View>
 
         {history.length === 0 ? (
@@ -311,6 +330,16 @@ const styles = StyleSheet.create({
   header: {
     padding: 20,
     paddingBottom: 16,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  backButton: {
+    padding: 8,
+    marginTop: 4,
+  },
+  headerTextContainer: {
+    flex: 1,
   },
   title: {
     fontSize: 32,

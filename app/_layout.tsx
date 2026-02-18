@@ -21,11 +21,9 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 // Wrap in try-catch to handle cases where splash screen isn't available
-try {
-  SplashScreen.preventAutoHideAsync();
-} catch (error) {
-  console.log('Splash screen not available:', error);
-}
+SplashScreen.preventAutoHideAsync().catch((error) => {
+  console.log('Splash screen preventAutoHideAsync not available:', error);
+});
 
 export const unstable_settings = {
   initialRouteName: "(tabs)", // Ensure any route can link back to `/`
@@ -74,7 +72,7 @@ export default function RootLayout() {
     if (loaded) {
       // Hide splash screen with error handling
       SplashScreen.hideAsync().catch((error) => {
-        console.log('Error hiding splash screen:', error);
+        console.log('Splash screen hideAsync error (safe to ignore):', error);
       });
     }
   }, [loaded]);

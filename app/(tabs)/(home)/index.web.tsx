@@ -130,22 +130,16 @@ export default function HomeScreen() {
     
     const formData = new FormData();
     
-    if (Platform.OS === 'web' && imageUri.startsWith('blob:')) {
-      const response = await fetch(imageUri);
-      const blob = await response.blob();
-      formData.append('image', new File([blob], 'image.jpg', { type: blob.type }));
-    } else {
-      const uriParts = imageUri.split('.');
-      const fileType = uriParts[uriParts.length - 1];
-      
-      const file: any = {
-        uri: imageUri,
-        name: `photo.${fileType}`,
-        type: `image/${fileType}`,
-      };
-      
-      formData.append('image', file);
-    }
+    const uriParts = imageUri.split('.');
+    const fileType = uriParts[uriParts.length - 1];
+    
+    const file: any = {
+      uri: imageUri,
+      name: `photo.${fileType}`,
+      type: `image/${fileType}`,
+    };
+    
+    formData.append('image', file);
     
     const token = await getBearerToken();
     
@@ -222,263 +216,268 @@ export default function HomeScreen() {
   const canAnalyze = mainImage && compareImage1 && compareImage2 && !isAnalyzing;
 
   return (
-    <LinearGradient
-      colors={[colors.background, colors.backgroundDark]}
-      style={styles.gradientContainer}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-    >
-      <SafeAreaView style={styles.container} edges={['top']}>
-        <Stack.Screen options={{ headerShown: false }} />
-        
-        <ScrollView 
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          scrollEnabled={true}
-        >
-          <View style={styles.header}>
-            <View style={styles.emojiRow}>
-              <Text style={styles.emoji}>🤔</Text>
-              <Text style={styles.emoji}>👥</Text>
-              <Text style={styles.emoji}>✨</Text>
-            </View>
-            <Text style={[styles.title, { color: textColor }]}>Chi ti somiglia?</Text>
-            <Text style={[styles.subtitle, { color: textSecondaryColor }]}>
-              Carica tre foto e scopri chi assomiglia di più!
-            </Text>
-          </View>
-
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionEmoji}>📸</Text>
-              <Text style={[styles.sectionTitle, { color: secondaryColor }]}>Foto Principale</Text>
-            </View>
-            <TouchableOpacity
-              style={[styles.imageCard, { backgroundColor: cardColor, borderColor: secondaryColor }]}
-              onPress={() => pickImage('main')}
-              activeOpacity={0.7}
-            >
-              {mainImage ? (
-                <Image source={{ uri: mainImage.uri }} style={styles.image} />
-              ) : (
-                <View style={styles.imagePlaceholder}>
-                  <IconSymbol
-                    ios_icon_name="photo"
-                    android_material_icon_name="add-photo-alternate"
-                    size={48}
-                    color={secondaryColor}
-                  />
-                  <Text style={[styles.placeholderText, { color: secondaryColor }]}>
-                    Tocca per caricare
-                  </Text>
-                </View>
-              )}
-            </TouchableOpacity>
-            {mainImage && (
-              <TextInput
-                style={[styles.labelInput, { backgroundColor: cardColor, color: textColor, borderColor: secondaryColor }]}
-                placeholder="Chi è? (es. Io, Mamma, Marco)"
-                placeholderTextColor={textSecondaryColor}
-                value={mainImage.label}
-                onChangeText={(text) => updateLabel('main', text)}
-              />
-            )}
-          </View>
-
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionEmoji}>🆚</Text>
-              <Text style={[styles.sectionTitle, { color: secondaryColor }]}>Foto da Confrontare</Text>
-            </View>
-            
-            <View style={styles.compareRow}>
-              <View style={styles.compareContainer}>
-                <TouchableOpacity
-                  style={[styles.compareCard, { backgroundColor: cardColor, borderColor: accentColor }]}
-                  onPress={() => pickImage('compare1')}
-                  activeOpacity={0.7}
-                >
-                  {compareImage1 ? (
-                    <Image source={{ uri: compareImage1.uri }} style={styles.compareImage} />
-                  ) : (
-                    <View style={styles.comparePlaceholder}>
-                      <IconSymbol
-                        ios_icon_name="photo"
-                        android_material_icon_name="add-photo-alternate"
-                        size={32}
-                        color={accentColor}
-                      />
-                      <Text style={[styles.compareNumber, { color: accentColor }]}>1</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-                {compareImage1 && (
-                  <TextInput
-                    style={[styles.compareLabelInput, { backgroundColor: cardColor, color: textColor, borderColor: accentColor }]}
-                    placeholder="Nome"
-                    placeholderTextColor={textSecondaryColor}
-                    value={compareImage1.label}
-                    onChangeText={(text) => updateLabel('compare1', text)}
-                  />
-                )}
-              </View>
-
-              <View style={styles.compareContainer}>
-                <TouchableOpacity
-                  style={[styles.compareCard, { backgroundColor: cardColor, borderColor: purpleColor }]}
-                  onPress={() => pickImage('compare2')}
-                  activeOpacity={0.7}
-                >
-                  {compareImage2 ? (
-                    <Image source={{ uri: compareImage2.uri }} style={styles.compareImage} />
-                  ) : (
-                    <View style={styles.comparePlaceholder}>
-                      <IconSymbol
-                        ios_icon_name="photo"
-                        android_material_icon_name="add-photo-alternate"
-                        size={32}
-                        color={purpleColor}
-                      />
-                      <Text style={[styles.compareNumber, { color: purpleColor }]}>2</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-                {compareImage2 && (
-                  <TextInput
-                    style={[styles.compareLabelInput, { backgroundColor: cardColor, color: textColor, borderColor: purpleColor }]}
-                    placeholder="Nome"
-                    placeholderTextColor={textSecondaryColor}
-                    value={compareImage2.label}
-                    onChangeText={(text) => updateLabel('compare2', text)}
-                  />
-                )}
-              </View>
-            </View>
-          </View>
-
-          <TouchableOpacity
-            style={[
-              styles.analyzeButton,
-              !canAnalyze && styles.analyzeButtonDisabled,
-            ]}
-            onPress={handleAnalyze}
-            disabled={!canAnalyze}
-            activeOpacity={0.8}
+    <View style={styles.outerContainer}>
+      <LinearGradient
+        colors={[colors.background, colors.backgroundDark]}
+        style={styles.gradientContainer}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        <SafeAreaView style={styles.container} edges={['top']}>
+          <Stack.Screen options={{ headerShown: false }} />
+          
+          <ScrollView 
+            style={styles.scrollView}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+            scrollEnabled={true}
           >
-            <LinearGradient
-              colors={canAnalyze ? [secondaryColor, accentColor] : ['#666666', '#444444']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.analyzeGradient}
-            >
-              {isAnalyzing ? (
-                <>
-                  <ActivityIndicator color={colors.background} size="small" />
-                  <Text style={[styles.analyzeButtonText, { color: colors.background }]}>
-                    Analisi in corso...
-                  </Text>
-                </>
-              ) : (
-                <>
-                  <Text style={styles.analyzeButtonEmoji}>🔍</Text>
-                  <Text style={[styles.analyzeButtonText, { color: colors.background }]}>
-                    Analizza Ora
-                  </Text>
-                </>
-              )}
-            </LinearGradient>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.historyButton, { backgroundColor: cardColor }]}
-            onPress={handleViewHistory}
-            activeOpacity={0.8}
-          >
-            <IconSymbol
-              ios_icon_name="clock.fill"
-              android_material_icon_name="history"
-              size={20}
-              color={secondaryColor}
-            />
-            <Text style={[styles.historyButtonText, { color: textColor }]}>
-              Vedi Storico
-            </Text>
-          </TouchableOpacity>
-
-          <View style={{ height: 120 }} />
-        </ScrollView>
-
-        {/* Logout Button - Bottom Right */}
-        <TouchableOpacity
-          style={[styles.logoutButton, { backgroundColor: cardColor }]}
-          onPress={() => setLogoutModal(true)}
-          activeOpacity={0.8}
-        >
-          <Text style={[styles.logoutButtonText, { color: textColor }]}>Esci</Text>
-        </TouchableOpacity>
-
-        {/* Error Modal */}
-        <Modal
-          visible={errorModal.visible}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setErrorModal({ visible: false, message: '' })}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={[styles.modalContent, { backgroundColor: cardColor }]}>
-              <Text style={styles.modalEmoji}>⚠️</Text>
-              <Text style={[styles.modalTitle, { color: textColor }]}>Attenzione</Text>
-              <Text style={[styles.modalMessage, { color: textSecondaryColor }]}>
-                {errorModal.message}
+            <View style={styles.header}>
+              <View style={styles.emojiRow}>
+                <Text style={styles.emoji}>🤔</Text>
+                <Text style={styles.emoji}>👥</Text>
+                <Text style={styles.emoji}>✨</Text>
+              </View>
+              <Text style={[styles.title, { color: textColor }]}>Chi ti somiglia?</Text>
+              <Text style={[styles.subtitle, { color: textSecondaryColor }]}>
+                Carica tre foto e scopri chi assomiglia di più!
               </Text>
+            </View>
+
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionEmoji}>📸</Text>
+                <Text style={[styles.sectionTitle, { color: secondaryColor }]}>Foto Principale</Text>
+              </View>
               <TouchableOpacity
-                style={[styles.modalButton, { backgroundColor: secondaryColor }]}
-                onPress={() => setErrorModal({ visible: false, message: '' })}
+                style={[styles.imageCard, { backgroundColor: cardColor, borderColor: secondaryColor }]}
+                onPress={() => pickImage('main')}
+                activeOpacity={0.7}
               >
-                <Text style={[styles.modalButtonText, { color: colors.background }]}>OK</Text>
+                {mainImage ? (
+                  <Image source={{ uri: mainImage.uri }} style={styles.image} />
+                ) : (
+                  <View style={styles.imagePlaceholder}>
+                    <IconSymbol
+                      ios_icon_name="photo"
+                      android_material_icon_name="add-photo-alternate"
+                      size={48}
+                      color={secondaryColor}
+                    />
+                    <Text style={[styles.placeholderText, { color: secondaryColor }]}>
+                      Tocca per caricare
+                    </Text>
+                  </View>
+                )}
               </TouchableOpacity>
+              {mainImage && (
+                <TextInput
+                  style={[styles.labelInput, { backgroundColor: cardColor, color: textColor, borderColor: secondaryColor }]}
+                  placeholder="Chi è? (es. Io, Mamma, Marco)"
+                  placeholderTextColor={textSecondaryColor}
+                  value={mainImage.label}
+                  onChangeText={(text) => updateLabel('main', text)}
+                />
+              )}
             </View>
-          </View>
-        </Modal>
 
-        {/* Logout Confirmation Modal */}
-        <Modal
-          visible={logoutModal}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setLogoutModal(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={[styles.modalContent, { backgroundColor: cardColor }]}>
-              <Text style={styles.modalEmoji}>👋</Text>
-              <Text style={[styles.modalTitle, { color: textColor }]}>Uscire dall&apos;account?</Text>
-              <Text style={[styles.modalMessage, { color: textSecondaryColor }]}>
-                Sei sicuro di voler uscire dal tuo account?
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionEmoji}>🆚</Text>
+                <Text style={[styles.sectionTitle, { color: secondaryColor }]}>Foto da Confrontare</Text>
+              </View>
+              
+              <View style={styles.compareRow}>
+                <View style={styles.compareContainer}>
+                  <TouchableOpacity
+                    style={[styles.compareCard, { backgroundColor: cardColor, borderColor: accentColor }]}
+                    onPress={() => pickImage('compare1')}
+                    activeOpacity={0.7}
+                  >
+                    {compareImage1 ? (
+                      <Image source={{ uri: compareImage1.uri }} style={styles.compareImage} />
+                    ) : (
+                      <View style={styles.comparePlaceholder}>
+                        <IconSymbol
+                          ios_icon_name="photo"
+                          android_material_icon_name="add-photo-alternate"
+                          size={32}
+                          color={accentColor}
+                        />
+                        <Text style={[styles.compareNumber, { color: accentColor }]}>1</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                  {compareImage1 && (
+                    <TextInput
+                      style={[styles.compareLabelInput, { backgroundColor: cardColor, color: textColor, borderColor: accentColor }]}
+                      placeholder="Nome"
+                      placeholderTextColor={textSecondaryColor}
+                      value={compareImage1.label}
+                      onChangeText={(text) => updateLabel('compare1', text)}
+                    />
+                  )}
+                </View>
+
+                <View style={styles.compareContainer}>
+                  <TouchableOpacity
+                    style={[styles.compareCard, { backgroundColor: cardColor, borderColor: purpleColor }]}
+                    onPress={() => pickImage('compare2')}
+                    activeOpacity={0.7}
+                  >
+                    {compareImage2 ? (
+                      <Image source={{ uri: compareImage2.uri }} style={styles.compareImage} />
+                    ) : (
+                      <View style={styles.comparePlaceholder}>
+                        <IconSymbol
+                          ios_icon_name="photo"
+                          android_material_icon_name="add-photo-alternate"
+                          size={32}
+                          color={purpleColor}
+                        />
+                        <Text style={[styles.compareNumber, { color: purpleColor }]}>2</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                  {compareImage2 && (
+                    <TextInput
+                      style={[styles.compareLabelInput, { backgroundColor: cardColor, color: textColor, borderColor: purpleColor }]}
+                      placeholder="Nome"
+                      placeholderTextColor={textSecondaryColor}
+                      value={compareImage2.label}
+                      onChangeText={(text) => updateLabel('compare2', text)}
+                    />
+                  )}
+                </View>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={[
+                styles.analyzeButton,
+                !canAnalyze && styles.analyzeButtonDisabled,
+              ]}
+              onPress={handleAnalyze}
+              disabled={!canAnalyze}
+              activeOpacity={0.8}
+            >
+              <LinearGradient
+                colors={canAnalyze ? [secondaryColor, accentColor] : ['#666666', '#444444']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.analyzeGradient}
+              >
+                {isAnalyzing ? (
+                  <>
+                    <ActivityIndicator color={colors.background} size="small" />
+                    <Text style={[styles.analyzeButtonText, { color: colors.background }]}>
+                      Analisi in corso...
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.analyzeButtonEmoji}>🔍</Text>
+                    <Text style={[styles.analyzeButtonText, { color: colors.background }]}>
+                      Analizza Ora
+                    </Text>
+                  </>
+                )}
+              </LinearGradient>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.historyButton, { backgroundColor: cardColor }]}
+              onPress={handleViewHistory}
+              activeOpacity={0.8}
+            >
+              <IconSymbol
+                ios_icon_name="clock.fill"
+                android_material_icon_name="history"
+                size={20}
+                color={secondaryColor}
+              />
+              <Text style={[styles.historyButtonText, { color: textColor }]}>
+                Vedi Storico
               </Text>
-              <View style={styles.modalButtons}>
+            </TouchableOpacity>
+
+            <View style={{ height: 120 }} />
+          </ScrollView>
+
+          {/* Error Modal */}
+          <Modal
+            visible={errorModal.visible}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setErrorModal({ visible: false, message: '' })}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={[styles.modalContent, { backgroundColor: cardColor }]}>
+                <Text style={styles.modalEmoji}>⚠️</Text>
+                <Text style={[styles.modalTitle, { color: textColor }]}>Attenzione</Text>
+                <Text style={[styles.modalMessage, { color: textSecondaryColor }]}>
+                  {errorModal.message}
+                </Text>
                 <TouchableOpacity
-                  style={[styles.modalButtonHalf, { backgroundColor: textSecondaryColor }]}
-                  onPress={() => setLogoutModal(false)}
+                  style={[styles.modalButton, { backgroundColor: secondaryColor }]}
+                  onPress={() => setErrorModal({ visible: false, message: '' })}
                 >
-                  <Text style={[styles.modalButtonText, { color: colors.background }]}>Annulla</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.modalButtonHalf, { backgroundColor: secondaryColor }]}
-                  onPress={handleLogout}
-                >
-                  <Text style={[styles.modalButtonText, { color: colors.background }]}>Esci</Text>
+                  <Text style={[styles.modalButtonText, { color: colors.background }]}>OK</Text>
                 </TouchableOpacity>
               </View>
             </View>
-          </View>
-        </Modal>
-      </SafeAreaView>
-    </LinearGradient>
+          </Modal>
+
+          {/* Logout Confirmation Modal */}
+          <Modal
+            visible={logoutModal}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setLogoutModal(false)}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={[styles.modalContent, { backgroundColor: cardColor }]}>
+                <Text style={styles.modalEmoji}>👋</Text>
+                <Text style={[styles.modalTitle, { color: textColor }]}>Uscire dall&apos;account?</Text>
+                <Text style={[styles.modalMessage, { color: textSecondaryColor }]}>
+                  Sei sicuro di voler uscire dal tuo account?
+                </Text>
+                <View style={styles.modalButtons}>
+                  <TouchableOpacity
+                    style={[styles.modalButtonHalf, { backgroundColor: textSecondaryColor }]}
+                    onPress={() => setLogoutModal(false)}
+                  >
+                    <Text style={[styles.modalButtonText, { color: colors.background }]}>Annulla</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalButtonHalf, { backgroundColor: secondaryColor }]}
+                    onPress={handleLogout}
+                  >
+                    <Text style={[styles.modalButtonText, { color: colors.background }]}>Esci</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </Modal>
+        </SafeAreaView>
+      </LinearGradient>
+
+      {/* Logout Button - Fixed Bottom Right (Outside ScrollView) */}
+      <TouchableOpacity
+        style={[styles.logoutButton, { backgroundColor: cardColor }]}
+        onPress={() => setLogoutModal(true)}
+        activeOpacity={0.8}
+      >
+        <Text style={[styles.logoutButtonText, { color: textColor }]}>Esci</Text>
+      </TouchableOpacity>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  outerContainer: {
+    flex: 1,
+  },
   gradientContainer: {
     flex: 1,
   },
