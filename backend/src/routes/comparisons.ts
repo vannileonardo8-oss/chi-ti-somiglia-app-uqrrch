@@ -110,11 +110,14 @@ export function registerComparisonsRoutes(app: App) {
         // Use Gemini for vision analysis
         const comparisonSchema = z.object({
           winner: z.number().int().min(1).max(2),
+          winnerSimilarity: z.number().int().min(0).max(100),
+          loserSimilarity: z.number().int().min(0).max(100),
           reasons: z.array(
             z.object({
               feature: z.string(),
               description: z.string(),
-              similarity: z.number().min(0).max(100),
+              winnerValue: z.number().int().min(0).max(100),
+              loserValue: z.number().int().min(0).max(100),
             })
           ),
           summary: z.string(),
@@ -137,7 +140,12 @@ export function registerComparisonsRoutes(app: App) {
 2. IMMAGINE DI CONFRONTO 1: ${compareImage1Label || 'Primo confronto'}
 3. IMMAGINE DI CONFRONTO 2: ${compareImage2Label || 'Secondo confronto'}
 
-Confronta i tratti del viso in entrambe le immagini di confronto rispetto all'immagine principale. Analizza questi tratti specifici:
+COMPITO: Confronta ENTRAMBE le immagini di confronto (1 e 2) rispetto all'immagine principale. Per ogni caratteristica, fornisci:
+- Una percentuale di somiglianza per l'immagine 1 (0-100)
+- Una percentuale di somiglianza per l'immagine 2 (0-100)
+- Una descrizione che spiega il confronto tra entrambe le immagini
+
+Analizza questi tratti specifici:
 - Distanza tra gli occhi e spaziatura
 - Forma del viso (ovale, rotonda, quadrata, rettangolare, ecc.)
 - Forma e dimensione del naso
@@ -147,14 +155,24 @@ Confronta i tratti del viso in entrambe le immagini di confronto rispetto all'im
 - Somiglianza del tono della pelle
 - Simmetria generale del viso
 
-Determina quale immagine di confronto (1 o 2) ha tratti facciali più simili all'immagine principale.
+Determina quale immagine (1 o 2) ha la somiglianza complessiva più alta con l'immagine principale.
 
 Restituisci la tua analisi come JSON con:
-- winner: 1 o 2 (quale immagine è più simile)
-- reasons: array di 5-7 confronti specifici dei tratti con punteggi di somiglianza (0-100)
-- summary: riepilogo di 2-3 frasi del motivo per cui un'immagine è più simile
+- winner: 1 o 2 (quale immagine è più simile complessivamente)
+- winnerSimilarity: percentuale media di somiglianza del vincitore con l'immagine principale (0-100)
+- loserSimilarity: percentuale media di somiglianza del perdente con l'immagine principale (0-100)
+- reasons: array di 5-8 confronti specifici dei tratti, OGNUNO con:
+  - feature: nome della caratteristica (es. "Forma del viso", "Distanza tra gli occhi")
+  - description: descrizione in italiano che confronta ENTRAMBE le foto per questa caratteristica, spiegando quale è più simile alla foto principale e perché
+  - winnerValue: percentuale di somiglianza del vincitore per questo tratto (0-100)
+  - loserValue: percentuale di somiglianza del perdente per questo tratto (0-100)
+- summary: riepilogo in italiano di 2-3 frasi che menziona i nomi delle due immagini, le loro percentuali di somiglianza e spiega perché una assomiglia più dell'altra
 
-IMPORTANTE: Tutte le descrizioni, i nomi dei tratti e il riepilogo DEVONO essere scritti in italiano. Non usare alcun testo in inglese.
+IMPORTANTE:
+- Tutte le descrizioni e il riepilogo DEVONO essere scritti in italiano. Non usare alcun testo in inglese.
+- Ogni descrizione deve confrontare ENTRAMBE le immagini in gara.
+- Le percentuali devono essere realistiche e coerenti tra i tratti.
+- Il winner deve avere una winnerSimilarity più alta di loserSimilarity.
 
 Formatta la risposta come JSON valido solamente, nessun testo aggiuntivo.`,
                 },
@@ -187,7 +205,7 @@ Formatta la risposta come JSON valido solamente, nessun testo aggiuntivo.`,
         const [comparison] = await app.db
           .insert(schema.comparisons)
           .values({
-            userId,
+            userId: userId,
             mainImageUrl,
             mainImageLabel,
             compareImage1Url,
@@ -196,6 +214,8 @@ Formatta la risposta come JSON valido solamente, nessun testo aggiuntivo.`,
             compareImage2Label,
             winnerImage: analysisData.winner,
             analysisResult: {
+              winnerSimilarity: analysisData.winnerSimilarity,
+              loserSimilarity: analysisData.loserSimilarity,
               reasons: analysisData.reasons,
               summary: analysisData.summary,
             },
@@ -212,10 +232,16 @@ Formatta la risposta come JSON valido solamente, nessun testo aggiuntivo.`,
             ? compareImage1Label
             : compareImage2Label;
 
+        const comparisonDifference =
+          analysisData.winnerSimilarity - analysisData.loserSimilarity;
+
         return {
           comparisonId: comparison.id,
           winner: analysisData.winner as 1 | 2,
           winnerLabel,
+          winnerSimilarity: analysisData.winnerSimilarity,
+          loserSimilarity: analysisData.loserSimilarity,
+          comparisonDifference,
           reasons: analysisData.reasons,
           summary: analysisData.summary,
         };
@@ -300,13 +326,19 @@ Formatta la risposta come JSON valido solamente, nessun testo aggiuntivo.`,
             : comparison.compareImage2Label;
 
         const analysisResult = comparison.analysisResult as {
+          winnerSimilarity: number;
+          loserSimilarity: number;
           reasons: Array<{
             feature: string;
             description: string;
-            similarity: number;
+            winnerValue: number;
+            loserValue: number;
           }>;
           summary: string;
         } | null;
+
+        const comparisonDifference =
+          (analysisResult?.winnerSimilarity || 0) - (analysisResult?.loserSimilarity || 0);
 
         return {
           id: comparison.id,
@@ -318,6 +350,9 @@ Formatta la risposta come JSON valido solamente, nessun testo aggiuntivo.`,
           compareImage2Label: comparison.compareImage2Label,
           winner: comparison.winnerImage,
           winnerLabel,
+          winnerSimilarity: analysisResult?.winnerSimilarity || 0,
+          loserSimilarity: analysisResult?.loserSimilarity || 0,
+          comparisonDifference,
           reasons: analysisResult?.reasons || [],
           summary: analysisResult?.summary || '',
           createdAt: comparison.createdAt.toISOString(),

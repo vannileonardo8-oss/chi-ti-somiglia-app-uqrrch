@@ -11,10 +11,13 @@ export const comparisons = pgTable('comparisons', {
   compareImage2Label: text('compare_image_2_label'),
   winnerImage: integer('winner_image'), // 1 or 2
   analysisResult: jsonb('analysis_result').$type<{
+    winnerSimilarity: number;
+    loserSimilarity: number;
     reasons: Array<{
       feature: string;
       description: string;
-      similarity: number;
+      winnerValue: number;
+      loserValue: number;
     }>;
     summary: string;
   }>(),
