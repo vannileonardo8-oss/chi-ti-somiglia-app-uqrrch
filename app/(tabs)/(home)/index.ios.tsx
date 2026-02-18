@@ -7,6 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
 import { Stack, useRouter } from 'expo-router';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   View,
   Text,
@@ -27,6 +28,7 @@ interface ImageData {
 
 export default function HomeScreen() {
   const router = useRouter();
+  const { signOut } = useAuth();
 
   const [mainImage, setMainImage] = useState<ImageData | null>(null);
   const [compareImage1, setCompareImage1] = useState<ImageData | null>(null);
@@ -36,6 +38,7 @@ export default function HomeScreen() {
     visible: false,
     message: '',
   });
+  const [logoutModal, setLogoutModal] = useState(false);
 
   const textColor = colors.text;
   const textSecondaryColor = colors.textSecondary;
@@ -47,6 +50,17 @@ export default function HomeScreen() {
 
   const showError = (message: string) => {
     setErrorModal({ visible: true, message });
+  };
+
+  const handleLogout = async () => {
+    console.log('User confirmed logout');
+    setLogoutModal(false);
+    try {
+      await signOut();
+      console.log('User logged out successfully');
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
   };
 
   const compressImage = async (uri: string): Promise<string> => {
@@ -191,6 +205,11 @@ export default function HomeScreen() {
     } finally {
       setIsAnalyzing(false);
     }
+  };
+
+  const handleViewHistory = () => {
+    console.log('User tapped View History button');
+    router.push('/(tabs)/history');
   };
 
   const canAnalyze = mainImage && compareImage1 && compareImage2 && !isAnalyzing;
@@ -364,9 +383,35 @@ export default function HomeScreen() {
             </LinearGradient>
           </TouchableOpacity>
 
-          <View style={{ height: 100 }} />
+          <TouchableOpacity
+            style={[styles.historyButton, { backgroundColor: cardColor }]}
+            onPress={handleViewHistory}
+            activeOpacity={0.8}
+          >
+            <IconSymbol
+              ios_icon_name="clock.fill"
+              android_material_icon_name="history"
+              size={20}
+              color={secondaryColor}
+            />
+            <Text style={[styles.historyButtonText, { color: textColor }]}>
+              Vedi Storico
+            </Text>
+          </TouchableOpacity>
+
+          <View style={{ height: 120 }} />
         </ScrollView>
 
+        {/* Logout Button - Bottom Right */}
+        <TouchableOpacity
+          style={[styles.logoutButton, { backgroundColor: cardColor }]}
+          onPress={() => setLogoutModal(true)}
+          activeOpacity={0.8}
+        >
+          <Text style={[styles.logoutButtonText, { color: textColor }]}>Esci</Text>
+        </TouchableOpacity>
+
+        {/* Error Modal */}
         <Modal
           visible={errorModal.visible}
           transparent
@@ -386,6 +431,38 @@ export default function HomeScreen() {
               >
                 <Text style={[styles.modalButtonText, { color: colors.background }]}>OK</Text>
               </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Logout Confirmation Modal */}
+        <Modal
+          visible={logoutModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setLogoutModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { backgroundColor: cardColor }]}>
+              <Text style={styles.modalEmoji}>👋</Text>
+              <Text style={[styles.modalTitle, { color: textColor }]}>Uscire dall&apos;account?</Text>
+              <Text style={[styles.modalMessage, { color: textSecondaryColor }]}>
+                Sei sicuro di voler uscire dal tuo account?
+              </Text>
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={[styles.modalButtonHalf, { backgroundColor: textSecondaryColor }]}
+                  onPress={() => setLogoutModal(false)}
+                >
+                  <Text style={[styles.modalButtonText, { color: colors.background }]}>Annulla</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButtonHalf, { backgroundColor: secondaryColor }]}
+                  onPress={handleLogout}
+                >
+                  <Text style={[styles.modalButtonText, { color: colors.background }]}>Esci</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         </Modal>
@@ -534,6 +611,36 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
   },
+  historyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    borderRadius: 12,
+    marginTop: 12,
+    gap: 8,
+  },
+  historyButtonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  logoutButton: {
+    position: 'absolute',
+    bottom: 100,
+    right: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  logoutButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
@@ -573,5 +680,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     textAlign: 'center',
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  modalButtonHalf: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
   },
 });
