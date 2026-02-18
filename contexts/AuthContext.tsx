@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { Platform } from "react-native";
 import * as Linking from "expo-linking";
+import { useRouter } from "expo-router";
 import { authClient, setBearerToken, clearAuthTokens } from "@/lib/auth";
 
 interface User {
@@ -20,7 +21,7 @@ interface AuthContextType {
   signInWithApple: () => Promise<void>;
   signInWithGitHub: () => Promise<void>;
   signOut: () => Promise<void>;
-  fetchUser: () => Promise<void>;
+  fetchUser: () => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -71,6 +72,7 @@ function openOAuthPopup(provider: string): Promise<string> {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
   useEffect(() => {
     // Initial fetch with error handling
@@ -80,14 +82,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     // Listen for deep links (e.g. from social auth redirects)
-    const subscription = Linking.addEventListener("url", (event) => {
-      console.log("Deep link received, refreshing user session");
-      // Allow time for the client to process the token if needed
-      setTimeout(() => {
-        fetchUser().catch((error) => {
-          console.error("Deep link fetchUser failed:", error);
-        });
-      }, 500);
+    const subscription = Linking.addEventListener("url", async (event) => {
+      console.log("Deep link received:", event.url);
+      
+      // Extract token from deep link if present
+      try {
+        const url = new URL(event.url);
+        const token = url.searchParams.get("better_auth_token");
+        
+        if (token) {
+          console.log("Token found in deep link, storing and fetching user...");
+          await setBearerToken(token);
+          // Give Better Auth client time to process the token, then fetch user and navigate
+          setTimeout(async () => {
+            try {
+              const userFetched = await fetchUser();
+              if (userFetched) {
+                console.log("User fetched after OAuth, navigating to home...");
+                router.replace("/(tabs)/(home)");
+              } else {
+                console.error("Failed to fetch user after OAuth token received");
+              }
+            } catch (error) {
+              console.error("Deep link fetchUser failed:", error);
+            }
+          }, 1000);
+        } else {
+          console.log("No token in deep link, refreshing session anyway");
+          // Still try to fetch user in case Better Auth handled it internally
+          setTimeout(async () => {
+            try {
+              const userFetched = await fetchUser();
+              if (userFetched) {
+                console.log("User session restored, navigating to home...");
+                router.replace("/(tabs)/(home)");
+              }
+            } catch (error) {
+              console.error("Deep link fetchUser failed:", error);
+            }
+          }, 1000);
+        }
+      } catch (error) {
+        console.error("Error parsing deep link:", error);
+        // Fallback: just try to fetch user
+        setTimeout(() => {
+          fetchUser().catch((error) => {
+            console.error("Deep link fetchUser failed:", error);
+          });
+        }, 1000);
+      }
     });
 
     // POLLING: Refresh session every 5 minutes to keep SecureStore token in sync
@@ -105,7 +148,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const fetchUser = async () => {
+  const fetchUser = async (): Promise<boolean> => {
     try {
       setLoading(true);
       console.log("Fetching user session...");
@@ -114,14 +157,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log("Session fetched:", session ? "success" : "no session");
       
       if (session?.data?.user) {
+        console.log("User found in session:", session.data.user.email);
         setUser(session.data.user as User);
         // Sync token to SecureStore for utils/api.ts
         if (session.data.session?.token) {
+          console.log("Storing session token to SecureStore");
           await setBearerToken(session.data.session.token);
         }
+        return true; // User successfully fetched
       } else {
+        console.log("No user in session, clearing state");
         setUser(null);
         await clearAuthTokens();
+        return false; // No user found
       }
     } catch (error) {
       console.error("Failed to fetch user:", error);
@@ -137,6 +185,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch (clearError) {
         console.error("Failed to clear auth tokens:", clearError);
       }
+      return false; // Error occurred
     } finally {
       setLoading(false);
     }
