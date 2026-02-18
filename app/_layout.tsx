@@ -1,6 +1,6 @@
 
 import "react-native-reanimated";
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useFonts } from "expo-font";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
@@ -17,16 +17,6 @@ import {
 import { StatusBar } from "expo-status-bar";
 import { WidgetProvider } from "@/contexts/WidgetContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
-
-// Prevent the splash screen from auto-hiding - with better error handling
-let splashScreenReady = false;
-try {
-  SplashScreen.preventAutoHideAsync();
-  splashScreenReady = true;
-} catch (error) {
-  console.log('[SplashScreen] preventAutoHideAsync not available (safe to ignore on re-login):', error);
-  splashScreenReady = false;
-}
 
 export const unstable_settings = {
   initialRouteName: "(tabs)",
@@ -67,17 +57,41 @@ export default function RootLayout() {
   const [loaded] = useFonts({
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
   });
+  const [splashReady, setSplashReady] = useState(false);
+
+  // Handle splash screen with better error handling
+  useEffect(() => {
+    const prepareSplash = async () => {
+      try {
+        await SplashScreen.preventAutoHideAsync();
+        setSplashReady(true);
+      } catch (error) {
+        // Safe to ignore - splash screen might not be available on re-login or hot reload
+        console.log('[SplashScreen] preventAutoHideAsync not available (safe to ignore):', error);
+        setSplashReady(true); // Still set to true so app can continue
+      }
+    };
+
+    prepareSplash();
+  }, []);
 
   useEffect(() => {
-    if (loaded && splashScreenReady) {
-      // Only try to hide if we successfully called preventAutoHideAsync
-      SplashScreen.hideAsync().catch((error) => {
-        console.log('[SplashScreen] hideAsync error (safe to ignore):', error);
-      });
-    }
-  }, [loaded]);
+    if (loaded && splashReady) {
+      // Hide splash screen once fonts are loaded
+      const hideSplash = async () => {
+        try {
+          await SplashScreen.hideAsync();
+        } catch (error) {
+          // Safe to ignore - splash screen might already be hidden
+          console.log('[SplashScreen] hideAsync error (safe to ignore):', error);
+        }
+      };
 
-  if (!loaded) {
+      hideSplash();
+    }
+  }, [loaded, splashReady]);
+
+  if (!loaded || !splashReady) {
     return null;
   }
 

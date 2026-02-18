@@ -1,3 +1,4 @@
+
 import { createAuthClient } from "better-auth/react";
 import { expoClient } from "@better-auth/expo/client";
 import * as SecureStore from "expo-secure-store";
@@ -15,7 +16,31 @@ const storage = Platform.OS === "web"
       setItem: (key: string, value: string) => localStorage.setItem(key, value),
       deleteItem: (key: string) => localStorage.removeItem(key),
     }
-  : SecureStore;
+  : {
+      getItem: async (key: string) => {
+        try {
+          return await SecureStore.getItemAsync(key);
+        } catch (error) {
+          console.error(`SecureStore getItem error for key ${key}:`, error);
+          return null;
+        }
+      },
+      setItem: async (key: string, value: string) => {
+        try {
+          await SecureStore.setItemAsync(key, value);
+        } catch (error) {
+          console.error(`SecureStore setItem error for key ${key}:`, error);
+        }
+      },
+      deleteItem: async (key: string) => {
+        try {
+          await SecureStore.deleteItemAsync(key);
+        } catch (error) {
+          // Ignore error if key doesn't exist
+          console.log(`SecureStore deleteItem (safe to ignore if key doesn't exist):`, error);
+        }
+      },
+    };
 
 export const authClient = createAuthClient({
   baseURL: API_URL,
@@ -39,18 +64,27 @@ export const authClient = createAuthClient({
 });
 
 export async function setBearerToken(token: string) {
-  if (Platform.OS === "web") {
-    localStorage.setItem(BEARER_TOKEN_KEY, token);
-  } else {
-    await SecureStore.setItemAsync(BEARER_TOKEN_KEY, token);
+  try {
+    if (Platform.OS === "web") {
+      localStorage.setItem(BEARER_TOKEN_KEY, token);
+    } else {
+      await SecureStore.setItemAsync(BEARER_TOKEN_KEY, token);
+    }
+  } catch (error) {
+    console.error("Failed to set bearer token:", error);
   }
 }
 
 export async function clearAuthTokens() {
-  if (Platform.OS === "web") {
-    localStorage.removeItem(BEARER_TOKEN_KEY);
-  } else {
-    await SecureStore.deleteItemAsync(BEARER_TOKEN_KEY);
+  try {
+    if (Platform.OS === "web") {
+      localStorage.removeItem(BEARER_TOKEN_KEY);
+    } else {
+      await SecureStore.deleteItemAsync(BEARER_TOKEN_KEY);
+    }
+  } catch (error) {
+    // Safe to ignore - key might not exist
+    console.log("Clear auth tokens (safe to ignore if key doesn't exist):", error);
   }
 }
 

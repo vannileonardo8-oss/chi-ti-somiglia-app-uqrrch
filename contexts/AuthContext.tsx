@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { Platform } from "react-native";
 import * as Linking from "expo-linking";
@@ -72,20 +73,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchUser();
+    // Initial fetch with error handling
+    fetchUser().catch((error) => {
+      console.error("Initial fetchUser failed:", error);
+      setLoading(false);
+    });
 
     // Listen for deep links (e.g. from social auth redirects)
     const subscription = Linking.addEventListener("url", (event) => {
       console.log("Deep link received, refreshing user session");
       // Allow time for the client to process the token if needed
-      setTimeout(() => fetchUser(), 500);
+      setTimeout(() => {
+        fetchUser().catch((error) => {
+          console.error("Deep link fetchUser failed:", error);
+        });
+      }, 500);
     });
 
     // POLLING: Refresh session every 5 minutes to keep SecureStore token in sync
     // This prevents 401 errors when the session token rotates
     const intervalId = setInterval(() => {
       console.log("Auto-refreshing user session to sync token...");
-      fetchUser();
+      fetchUser().catch((error) => {
+        console.error("Auto-refresh fetchUser failed:", error);
+      });
     }, 5 * 60 * 1000); // 5 minutes
 
     return () => {
@@ -97,7 +108,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const fetchUser = async () => {
     try {
       setLoading(true);
+      console.log("Fetching user session...");
+      
       const session = await authClient.getSession();
+      console.log("Session fetched:", session ? "success" : "no session");
+      
       if (session?.data?.user) {
         setUser(session.data.user as User);
         // Sync token to SecureStore for utils/api.ts
@@ -110,7 +125,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("Failed to fetch user:", error);
+      // Log more details about the error
+      if (error instanceof Error) {
+        console.error("Error message:", error.message);
+        console.error("Error stack:", error.stack);
+      }
       setUser(null);
+      // Clear tokens on error to prevent stuck state
+      try {
+        await clearAuthTokens();
+      } catch (clearError) {
+        console.error("Failed to clear auth tokens:", clearError);
+      }
     } finally {
       setLoading(false);
     }
@@ -118,6 +144,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithEmail = async (email: string, password: string) => {
     try {
+      console.log("Signing in with email...");
       await authClient.signIn.email({ email, password });
       await fetchUser();
     } catch (error) {
@@ -128,11 +155,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUpWithEmail = async (email: string, password: string, name?: string) => {
     try {
+      console.log("Signing up with email...");
       await authClient.signUp.email({
         email,
         password,
         name,
-        // Ensure name is passed in header or logic if required, usually passed in body
       });
       await fetchUser();
     } catch (error) {
@@ -143,6 +170,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithSocial = async (provider: "google" | "apple" | "github") => {
     try {
+      console.log(`Signing in with ${provider}...`);
+      
       if (Platform.OS === "web") {
         const token = await openOAuthPopup(provider);
         await setBearerToken(token);
@@ -150,20 +179,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         // Native: Use expo-linking to generate a proper deep link
         const callbackURL = Linking.createURL("/(tabs)/(home)");
+        console.log("Native OAuth callback URL:", callbackURL);
+        
         await authClient.signIn.social({
           provider,
           callbackURL,
         });
-        // Note: The redirect will reload the app or be handled by deep linking.
-        // fetchUser will be called on mount or via event listener if needed.
-        // For simple flow, we might need to listen to URL events.
-        // But better-auth expo client handles the redirect and session storage?
-        // We typically need to wait or rely on fetchUser on next app load.
-        // For now, call fetchUser just in case.
-        await fetchUser();
+        
+        // On native, the OAuth flow will redirect back to the app
+        // The deep link listener will trigger fetchUser
+        console.log("OAuth flow initiated, waiting for redirect...");
       }
     } catch (error) {
       console.error(`${provider} sign in failed:`, error);
+      if (error instanceof Error) {
+        console.error("Error details:", error.message);
+      }
       throw error;
     }
   };
@@ -174,13 +205,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     try {
+      console.log("Signing out...");
       await authClient.signOut();
+      console.log("Sign out API call successful");
     } catch (error) {
       console.error("Sign out failed (API):", error);
     } finally {
        // Always clear local state
+       console.log("Clearing local auth state");
        setUser(null);
-       await clearAuthTokens();
+       try {
+         await clearAuthTokens();
+       } catch (clearError) {
+         console.error("Failed to clear auth tokens:", clearError);
+       }
     }
   };
 
