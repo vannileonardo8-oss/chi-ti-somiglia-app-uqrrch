@@ -1,10 +1,7 @@
-
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { Platform } from "react-native";
 import * as Linking from "expo-linking";
-import * as WebBrowser from "expo-web-browser";
-import { useRouter } from "expo-router";
-import { authClient, setBearerToken, clearAuthTokens, API_URL } from "@/lib/auth";
+import { authClient, setBearerToken, clearAuthTokens } from "@/lib/auth";
 
 interface User {
   id: string;
@@ -22,13 +19,10 @@ interface AuthContextType {
   signInWithApple: () => Promise<void>;
   signInWithGitHub: () => Promise<void>;
   signOut: () => Promise<void>;
-  fetchUser: () => Promise<boolean>;
+  fetchUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-// Warm up the browser for faster OAuth on iOS
-WebBrowser.maybeCompleteAuthSession();
 
 function openOAuthPopup(provider: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -76,127 +70,22 @@ function openOAuthPopup(provider: string): Promise<string> {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const router = useRouter();
 
   useEffect(() => {
-    console.log("[AuthContext] Initializing...");
-    
-    // Initial fetch with error handling
-    fetchUser().catch((error) => {
-      console.error("[AuthContext] Initial fetchUser failed:", error);
-      setLoading(false);
-    });
+    fetchUser();
 
     // Listen for deep links (e.g. from social auth redirects)
-    const subscription = Linking.addEventListener("url", async (event) => {
-      console.log("[AuthContext] 🔗 Deep link received:", event.url);
-      
-      // Extract token from deep link if present
-      try {
-        const url = new URL(event.url);
-        console.log("[AuthContext] Parsed URL:", {
-          href: url.href,
-          pathname: url.pathname,
-          search: url.search,
-          searchParams: Array.from(url.searchParams.entries())
-        });
-        
-        const token = url.searchParams.get("better_auth_token");
-        
-        if (token) {
-          console.log("[AuthContext] ✅ Token found in deep link!");
-          await setBearerToken(token);
-          
-          // Fetch user immediately after setting token
-          console.log("[AuthContext] Fetching user after OAuth...");
-          const userFetched = await fetchUser();
-          
-          if (userFetched) {
-            console.log("[AuthContext] ✅ User fetched successfully, navigating to home...");
-            router.replace("/(tabs)/(home)");
-          } else {
-            console.error("[AuthContext] ❌ Failed to fetch user after OAuth token received");
-          }
-        } else {
-          console.log("[AuthContext] ⚠️ No token in deep link URL params");
-          
-          // Still try to fetch user in case Better Auth handled it internally
-          console.log("[AuthContext] Attempting to fetch user anyway...");
-          const userFetched = await fetchUser();
-          
-          if (userFetched) {
-            console.log("[AuthContext] ✅ User session restored, navigating to home...");
-            router.replace("/(tabs)/(home)");
-          } else {
-            console.log("[AuthContext] ℹ️ No user session found");
-          }
-        }
-      } catch (error) {
-        console.error("[AuthContext] ❌ Error parsing deep link:", error);
-        if (error instanceof Error) {
-          console.error("[AuthContext] Error details:", error.message);
-        }
-        
-        // Fallback: just try to fetch user
-        console.log("[AuthContext] Fallback: attempting to fetch user...");
-        try {
-          const userFetched = await fetchUser();
-          if (userFetched) {
-            console.log("[AuthContext] ✅ User fetched in fallback, navigating to home...");
-            router.replace("/(tabs)/(home)");
-          }
-        } catch (fetchError) {
-          console.error("[AuthContext] ❌ Fallback fetchUser failed:", fetchError);
-        }
-      }
-    });
-
-    // Check for initial URL (app opened via deep link)
-    Linking.getInitialURL().then((url) => {
-      if (url) {
-        console.log("[AuthContext] 🔗 Initial URL detected:", url);
-        subscription.remove(); // Remove listener temporarily
-        
-        // Manually trigger the handler
-        const handleInitialUrl = async () => {
-          try {
-            const parsedUrl = new URL(url);
-            console.log("[AuthContext] Initial URL parsed:", {
-              href: parsedUrl.href,
-              pathname: parsedUrl.pathname,
-              search: parsedUrl.search,
-              searchParams: Array.from(parsedUrl.searchParams.entries())
-            });
-            
-            const token = parsedUrl.searchParams.get("better_auth_token");
-            
-            if (token) {
-              console.log("[AuthContext] ✅ Token found in initial URL!");
-              await setBearerToken(token);
-              
-              const userFetched = await fetchUser();
-              
-              if (userFetched) {
-                console.log("[AuthContext] ✅ User fetched from initial URL, navigating to home...");
-                router.replace("/(tabs)/(home)");
-              }
-            }
-          } catch (error) {
-            console.error("[AuthContext] ❌ Error handling initial URL:", error);
-          }
-        };
-        
-        handleInitialUrl();
-      }
+    const subscription = Linking.addEventListener("url", (event) => {
+      console.log("Deep link received, refreshing user session");
+      // Allow time for the client to process the token if needed
+      setTimeout(() => fetchUser(), 500);
     });
 
     // POLLING: Refresh session every 5 minutes to keep SecureStore token in sync
     // This prevents 401 errors when the session token rotates
     const intervalId = setInterval(() => {
-      console.log("[AuthContext] Auto-refreshing user session to sync token...");
-      fetchUser().catch((error) => {
-        console.error("[AuthContext] Auto-refresh fetchUser failed:", error);
-      });
+      console.log("Auto-refreshing user session to sync token...");
+      fetchUser();
     }, 5 * 60 * 1000); // 5 minutes
 
     return () => {
@@ -205,45 +94,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const fetchUser = async (): Promise<boolean> => {
+  const fetchUser = async () => {
     try {
       setLoading(true);
-      console.log("[AuthContext] 📡 Fetching user session...");
-      
       const session = await authClient.getSession();
-      console.log("[AuthContext] Session response:", session ? "received" : "null");
-      
       if (session?.data?.user) {
-        console.log("[AuthContext] ✅ User found in session:", session.data.user.email);
         setUser(session.data.user as User);
-        
         // Sync token to SecureStore for utils/api.ts
         if (session.data.session?.token) {
-          console.log("[AuthContext] 💾 Storing session token to SecureStore");
           await setBearerToken(session.data.session.token);
         }
-        return true; // User successfully fetched
       } else {
-        console.log("[AuthContext] ℹ️ No user in session, clearing state");
         setUser(null);
         await clearAuthTokens();
-        return false; // No user found
       }
     } catch (error) {
-      console.error("[AuthContext] ❌ Failed to fetch user:", error);
-      // Log more details about the error
-      if (error instanceof Error) {
-        console.error("[AuthContext] Error message:", error.message);
-        console.error("[AuthContext] Error stack:", error.stack);
-      }
+      console.error("Failed to fetch user:", error);
       setUser(null);
-      // Clear tokens on error to prevent stuck state
-      try {
-        await clearAuthTokens();
-      } catch (clearError) {
-        console.error("[AuthContext] Failed to clear auth tokens:", clearError);
-      }
-      return false; // Error occurred
     } finally {
       setLoading(false);
     }
@@ -251,86 +118,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithEmail = async (email: string, password: string) => {
     try {
-      console.log("[AuthContext] 📧 Signing in with email...");
       await authClient.signIn.email({ email, password });
       await fetchUser();
     } catch (error) {
-      console.error("[AuthContext] ❌ Email sign in failed:", error);
+      console.error("Email sign in failed:", error);
       throw error;
     }
   };
 
   const signUpWithEmail = async (email: string, password: string, name?: string) => {
     try {
-      console.log("[AuthContext] 📧 Signing up with email...");
       await authClient.signUp.email({
         email,
         password,
         name,
+        // Ensure name is passed in header or logic if required, usually passed in body
       });
       await fetchUser();
     } catch (error) {
-      console.error("[AuthContext] ❌ Email sign up failed:", error);
+      console.error("Email sign up failed:", error);
       throw error;
     }
   };
 
   const signInWithSocial = async (provider: "google" | "apple" | "github") => {
     try {
-      console.log(`[AuthContext] 🔐 Signing in with ${provider}...`);
-      
       if (Platform.OS === "web") {
         const token = await openOAuthPopup(provider);
         await setBearerToken(token);
         await fetchUser();
       } else {
-        // Native: Use WebBrowser for OAuth flow
-        const redirectUri = Linking.createURL("/");
-        console.log("[AuthContext] 📱 Native OAuth redirect URI:", redirectUri);
-        
-        // Construct the OAuth URL
-        const authUrl = `${API_URL}/api/auth/oauth/${provider}?redirect_uri=${encodeURIComponent(redirectUri)}`;
-        console.log("[AuthContext] 🌐 Opening OAuth URL:", authUrl);
-        
-        // Open the browser for OAuth
-        const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
-        
-        console.log("[AuthContext] 📱 WebBrowser result:", result);
-        
-        if (result.type === "success" && result.url) {
-          console.log("[AuthContext] ✅ OAuth success, parsing URL:", result.url);
-          
-          // Extract token from the redirect URL
-          const url = new URL(result.url);
-          const token = url.searchParams.get("better_auth_token");
-          
-          if (token) {
-            console.log("[AuthContext] ✅ Token extracted from OAuth redirect");
-            await setBearerToken(token);
-            const userFetched = await fetchUser();
-            
-            if (userFetched) {
-              console.log("[AuthContext] ✅ User fetched after OAuth");
-            } else {
-              throw new Error("Failed to fetch user after OAuth");
-            }
-          } else {
-            console.error("[AuthContext] ❌ No token in OAuth redirect URL");
-            throw new Error("No authentication token received");
-          }
-        } else if (result.type === "cancel") {
-          console.log("[AuthContext] ⚠️ OAuth cancelled by user");
-          throw new Error("Authentication cancelled");
-        } else {
-          console.error("[AuthContext] ❌ OAuth failed:", result);
-          throw new Error("Authentication failed");
-        }
+        // Native: Use expo-linking to generate a proper deep link
+        const callbackURL = Linking.createURL("/(tabs)/(home)");
+        await authClient.signIn.social({
+          provider,
+          callbackURL,
+        });
+        // Note: The redirect will reload the app or be handled by deep linking.
+        // fetchUser will be called on mount or via event listener if needed.
+        // For simple flow, we might need to listen to URL events.
+        // But better-auth expo client handles the redirect and session storage?
+        // We typically need to wait or rely on fetchUser on next app load.
+        // For now, call fetchUser just in case.
+        await fetchUser();
       }
     } catch (error) {
-      console.error(`[AuthContext] ❌ ${provider} sign in failed:`, error);
-      if (error instanceof Error) {
-        console.error("[AuthContext] Error details:", error.message);
-      }
+      console.error(`${provider} sign in failed:`, error);
       throw error;
     }
   };
@@ -341,20 +174,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     try {
-      console.log("[AuthContext] 🚪 Signing out...");
       await authClient.signOut();
-      console.log("[AuthContext] ✅ Sign out API call successful");
     } catch (error) {
-      console.error("[AuthContext] ❌ Sign out failed (API):", error);
+      console.error("Sign out failed (API):", error);
     } finally {
        // Always clear local state
-       console.log("[AuthContext] 🧹 Clearing local auth state");
        setUser(null);
-       try {
-         await clearAuthTokens();
-       } catch (clearError) {
-         console.error("[AuthContext] Failed to clear auth tokens:", clearError);
-       }
+       await clearAuthTokens();
     }
   };
 

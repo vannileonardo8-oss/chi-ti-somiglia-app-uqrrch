@@ -125,27 +125,30 @@ export default function HomeScreen() {
   };
 
   const uploadImage = async (imageUri: string): Promise<string> => {
-    console.log('[API] Uploading image:', imageUri);
+    console.log('[API] Uploading image (native):', imageUri);
     
     const formData = new FormData();
     
     const uriParts = imageUri.split('.');
-    const fileType = uriParts[uriParts.length - 1];
+    const fileType = uriParts[uriParts.length - 1] || 'jpg';
     
     const file: any = {
       uri: imageUri,
       name: `photo.${fileType}`,
-      type: `image/${fileType}`,
+      type: `image/${fileType === 'jpg' ? 'jpeg' : fileType}`,
     };
     
     formData.append('image', file);
     
     const token = await getBearerToken();
     
+    console.log('[API] Sending upload request to:', `${BACKEND_URL}/api/upload/image`);
+    
     const response = await fetch(`${BACKEND_URL}/api/upload/image`, {
       method: 'POST',
       body: formData,
       headers: {
+        // NOTE: Do NOT set Content-Type for FormData - React Native sets it automatically with boundary
         'Accept': 'application/json',
         ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
       },
@@ -154,7 +157,7 @@ export default function HomeScreen() {
     if (!response.ok) {
       const errorText = await response.text();
       console.error('[API] Upload error:', response.status, errorText);
-      throw new Error(`Upload failed: ${response.status}`);
+      throw new Error(`Upload failed: ${response.status} - ${errorText}`);
     }
     
     const data = await response.json();

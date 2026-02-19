@@ -16,7 +16,7 @@ import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
-import { apiGet, authenticatedDelete } from '@/utils/api';
+import { authenticatedGet, authenticatedDelete } from '@/utils/api';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
@@ -66,7 +66,7 @@ export default function HistoryScreen() {
     setLoading(true);
     
     try {
-      const data = await apiGet<ComparisonHistoryItem[]>('/api/comparisons');
+      const data = await authenticatedGet<ComparisonHistoryItem[]>('/api/comparisons');
       console.log('[API] History loaded:', data);
       setHistory(data);
     } catch (error) {

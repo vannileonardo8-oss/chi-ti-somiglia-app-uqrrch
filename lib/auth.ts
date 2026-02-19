@@ -1,9 +1,17 @@
-
 import { createAuthClient } from "better-auth/react";
 import { expoClient } from "@better-auth/expo/client";
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 import Constants from "expo-constants";
+
+// Resolve the app scheme from app.json to ensure deep links work correctly
+// app.json has scheme: "Chi ti somiglia?" - we need to use this exact value
+const _rawScheme = Constants.expoConfig?.scheme;
+const APP_SCHEME: string = _rawScheme
+  ? (Array.isArray(_rawScheme) ? _rawScheme[0] : _rawScheme)
+  : "chi-ti-somiglia";
+
+console.log("[Auth] Resolved APP_SCHEME:", APP_SCHEME);
 
 const API_URL = "https://3az2ndteth9e6e3ftqke6u4yj9646gyu.app.specular.dev";
 
@@ -16,37 +24,13 @@ const storage = Platform.OS === "web"
       setItem: (key: string, value: string) => localStorage.setItem(key, value),
       deleteItem: (key: string) => localStorage.removeItem(key),
     }
-  : {
-      getItem: async (key: string) => {
-        try {
-          return await SecureStore.getItemAsync(key);
-        } catch (error) {
-          console.error(`SecureStore getItem error for key ${key}:`, error);
-          return null;
-        }
-      },
-      setItem: async (key: string, value: string) => {
-        try {
-          await SecureStore.setItemAsync(key, value);
-        } catch (error) {
-          console.error(`SecureStore setItem error for key ${key}:`, error);
-        }
-      },
-      deleteItem: async (key: string) => {
-        try {
-          await SecureStore.deleteItemAsync(key);
-        } catch (error) {
-          // Ignore error if key doesn't exist
-          console.log(`SecureStore deleteItem (safe to ignore if key doesn't exist):`, error);
-        }
-      },
-    };
+  : SecureStore;
 
 export const authClient = createAuthClient({
   baseURL: API_URL,
   plugins: [
     expoClient({
-      scheme: "chi-ti-somiglia",
+      scheme: APP_SCHEME,
       storagePrefix: "chi-ti-somiglia",
       storage,
     }),
@@ -64,29 +48,18 @@ export const authClient = createAuthClient({
 });
 
 export async function setBearerToken(token: string) {
-  try {
-    console.log("Setting bearer token...");
-    if (Platform.OS === "web") {
-      localStorage.setItem(BEARER_TOKEN_KEY, token);
-    } else {
-      await SecureStore.setItemAsync(BEARER_TOKEN_KEY, token);
-    }
-    console.log("Bearer token set successfully");
-  } catch (error) {
-    console.error("Failed to set bearer token:", error);
+  if (Platform.OS === "web") {
+    localStorage.setItem(BEARER_TOKEN_KEY, token);
+  } else {
+    await SecureStore.setItemAsync(BEARER_TOKEN_KEY, token);
   }
 }
 
 export async function clearAuthTokens() {
-  try {
-    if (Platform.OS === "web") {
-      localStorage.removeItem(BEARER_TOKEN_KEY);
-    } else {
-      await SecureStore.deleteItemAsync(BEARER_TOKEN_KEY);
-    }
-  } catch (error) {
-    // Safe to ignore - key might not exist
-    console.log("Clear auth tokens (safe to ignore if key doesn't exist):", error);
+  if (Platform.OS === "web") {
+    localStorage.removeItem(BEARER_TOKEN_KEY);
+  } else {
+    await SecureStore.deleteItemAsync(BEARER_TOKEN_KEY);
   }
 }
 

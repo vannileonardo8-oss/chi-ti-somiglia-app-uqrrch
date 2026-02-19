@@ -6,10 +6,10 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Alert,
   Platform,
   KeyboardAvoidingView,
   ScrollView,
-  Modal,
 } from "react-native";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "expo-router";
@@ -26,11 +26,6 @@ export default function AuthScreen() {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
-  const [modal, setModal] = useState<{ visible: boolean; title: string; message: string }>({
-    visible: false,
-    title: '',
-    message: '',
-  });
 
   if (authLoading) {
     return (
@@ -40,13 +35,9 @@ export default function AuthScreen() {
     );
   }
 
-  const showModal = (title: string, message: string) => {
-    setModal({ visible: true, title, message });
-  };
-
   const handleEmailAuth = async () => {
     if (!email || !password) {
-      showModal("Errore", "Inserisci email e password");
+      Alert.alert("Errore", "Inserisci email e password");
       return;
     }
 
@@ -57,14 +48,14 @@ export default function AuthScreen() {
         router.replace("/(tabs)/(home)");
       } else {
         await signUpWithEmail(email, password, name);
-        showModal(
-          "Successo",
-          "Account creato! Controlla la tua email per verificare l'account."
+        Alert.alert(
+          "Success",
+          "Account created! Please check your email to verify your account."
         );
         router.replace("/(tabs)/(home)");
       }
     } catch (error: any) {
-      showModal("Errore", error.message || "Autenticazione fallita");
+      Alert.alert("Error", error.message || "Autenticazione fallita");
     } finally {
       setLoading(false);
     }
@@ -82,7 +73,7 @@ export default function AuthScreen() {
       }
       router.replace("/(tabs)/(home)");
     } catch (error: any) {
-      showModal("Errore", error.message || "Autenticazione fallita");
+      Alert.alert("Error", error.message || "Authentication failed");
     } finally {
       setLoading(false);
     }
@@ -97,9 +88,6 @@ export default function AuthScreen() {
         <View style={styles.content}>
           <Text style={styles.title}>
             {mode === "signin" ? "Accedi" : "Registrati"}
-          </Text>
-          <Text style={styles.subtitle}>
-            Chi ti somiglia?
           </Text>
 
           {mode === "signup" && (
@@ -140,7 +128,7 @@ export default function AuthScreen() {
               <ActivityIndicator color="#fff" />
             ) : (
               <Text style={styles.primaryButtonText}>
-                {mode === "signin" ? "Accedi" : "Registrati"}
+                {mode === "signin" ? "Sign In" : "Sign Up"}
               </Text>
             )}
           </TouchableOpacity>
@@ -151,8 +139,8 @@ export default function AuthScreen() {
           >
             <Text style={styles.switchModeText}>
               {mode === "signin"
-                ? "Non hai un account? Registrati"
-                : "Hai già un account? Accedi"}
+                ? "Non hai un account? Sign Up"
+                : "Hai già un account? Sign In"}
             </Text>
           </TouchableOpacity>
 
@@ -183,27 +171,6 @@ export default function AuthScreen() {
           )}
         </View>
       </ScrollView>
-
-      {/* Modal */}
-      <Modal
-        visible={modal.visible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setModal({ visible: false, title: '', message: '' })}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>{modal.title}</Text>
-            <Text style={styles.modalMessage}>{modal.message}</Text>
-            <TouchableOpacity
-              style={styles.modalButton}
-              onPress={() => setModal({ visible: false, title: '', message: '' })}
-            >
-              <Text style={styles.modalButtonText}>OK</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -230,16 +197,9 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 32,
     fontWeight: "bold",
-    marginBottom: 8,
-    textAlign: "center",
-    color: "#000",
-  },
-  subtitle: {
-    fontSize: 18,
     marginBottom: 32,
     textAlign: "center",
-    color: "#FF6B9D",
-    fontWeight: "600",
+    color: "#000",
   },
   input: {
     height: 50,
@@ -253,7 +213,7 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     height: 50,
-    backgroundColor: "#FF6B9D",
+    backgroundColor: "#007AFF",
     borderRadius: 8,
     justifyContent: "center",
     alignItems: "center",
@@ -272,7 +232,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   switchModeText: {
-    color: "#FF6B9D",
+    color: "#007AFF",
     fontSize: 14,
   },
   divider: {
@@ -311,46 +271,5 @@ const styles = StyleSheet.create({
   },
   appleButtonText: {
     color: "#fff",
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  modalContent: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 24,
-    width: '100%',
-    maxWidth: 400,
-    alignItems: 'center',
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 12,
-    color: '#000',
-  },
-  modalMessage: {
-    fontSize: 16,
-    textAlign: 'center',
-    marginBottom: 24,
-    lineHeight: 22,
-    color: '#666',
-  },
-  modalButton: {
-    backgroundColor: '#FF6B9D',
-    paddingVertical: 12,
-    paddingHorizontal: 32,
-    borderRadius: 12,
-    minWidth: 100,
-  },
-  modalButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-    textAlign: 'center',
   },
 });

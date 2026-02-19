@@ -126,20 +126,45 @@ export default function HomeScreen() {
   };
 
   const uploadImage = async (imageUri: string): Promise<string> => {
-    console.log('[API] Uploading image:', imageUri);
+    console.log('[API] Uploading image (web):', imageUri);
     
     const formData = new FormData();
     
-    const uriParts = imageUri.split('.');
-    const fileType = uriParts[uriParts.length - 1];
-    
-    const file: any = {
-      uri: imageUri,
-      name: `photo.${fileType}`,
-      type: `image/${fileType}`,
-    };
-    
-    formData.append('image', file);
+    // On web, expo-image-picker returns a blob URL or data URL
+    // We need to fetch the blob and append it as a File object
+    try {
+      let fileBlob: Blob;
+      let fileName = 'photo.jpg';
+      
+      if (imageUri.startsWith('blob:') || imageUri.startsWith('data:')) {
+        // Fetch the blob from the blob URL or data URL
+        const blobResponse = await fetch(imageUri);
+        fileBlob = await blobResponse.blob();
+        
+        // Determine file extension from mime type
+        const mimeType = fileBlob.type || 'image/jpeg';
+        const ext = mimeType.split('/')[1] || 'jpg';
+        fileName = `photo.${ext}`;
+      } else {
+        // Fallback: treat as regular URL
+        const blobResponse = await fetch(imageUri);
+        fileBlob = await blobResponse.blob();
+        const uriParts = imageUri.split('.');
+        const fileType = uriParts[uriParts.length - 1] || 'jpg';
+        fileName = `photo.${fileType}`;
+      }
+      
+      const file = new File([fileBlob], fileName, { type: fileBlob.type || 'image/jpeg' });
+      formData.append('image', file);
+      
+      console.log('[API] File prepared for upload:', fileName, 'size:', fileBlob.size);
+    } catch (blobError) {
+      console.error('[API] Failed to process image blob, trying direct append:', blobError);
+      // Last resort fallback
+      const uriParts = imageUri.split('.');
+      const fileType = uriParts[uriParts.length - 1] || 'jpg';
+      formData.append('image', imageUri as any);
+    }
     
     const token = await getBearerToken();
     
@@ -149,13 +174,14 @@ export default function HomeScreen() {
       headers: {
         'Accept': 'application/json',
         ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        // NOTE: Do NOT set Content-Type for FormData - browser sets it automatically with boundary
       },
     });
     
     if (!response.ok) {
       const errorText = await response.text();
       console.error('[API] Upload error:', response.status, errorText);
-      throw new Error(`Upload failed: ${response.status}`);
+      throw new Error(`Upload failed: ${response.status} - ${errorText}`);
     }
     
     const data = await response.json();

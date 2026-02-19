@@ -30,12 +30,20 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (loading) return;
+    if (!segments || segments.length === 0) return;
 
-    const inAuthGroup = segments[0] === "auth" || segments[0] === "auth-popup" || segments[0] === "auth-callback";
+    const inAuthGroup = 
+      segments[0] === "auth" || 
+      segments[0] === "auth-popup" || 
+      segments[0] === "auth-callback";
+
+    console.log("[AuthGuard] user:", !!user, "loading:", loading, "segments:", segments, "inAuthGroup:", inAuthGroup);
 
     if (!user && !inAuthGroup) {
+      console.log("[AuthGuard] Redirecting to /auth");
       router.replace("/auth");
     } else if (user && inAuthGroup) {
+      console.log("[AuthGuard] Redirecting to home");
       router.replace("/(tabs)/(home)");
     }
   }, [user, loading, segments, router]);
