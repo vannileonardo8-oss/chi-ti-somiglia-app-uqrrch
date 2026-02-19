@@ -11,7 +11,7 @@ export const app = await createApplication(schema);
 // Export App type for use in route files
 export type App = typeof app;
 
-// Enable authentication with native app scheme support
+// Enable authentication with OAuth providers and native app scheme support
 app.withAuth({
   // Trust the chi-ti-somiglia native app scheme and Expo deep links
   trustedOrigins: [
@@ -22,6 +22,17 @@ app.withAuth({
     'exp://10.0.0.*:*/**',
     'http://localhost:*',
   ],
+  // Configure OAuth providers with environment variables
+  socialProviders: {
+    google: {
+      clientId: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    },
+    apple: {
+      clientId: process.env.APPLE_CLIENT_ID,
+      clientSecret: process.env.APPLE_CLIENT_SECRET,
+    },
+  },
 });
 
 // Enable storage
@@ -73,11 +84,19 @@ app.fastify.addHook('onSend', async (request, reply, payload) => {
           }
         }
 
-        // Handle native app redirects: append Better Auth token to the native app URL
-        if (location.includes('chi-ti-somiglia://')) {
+        // Handle native app redirects (exp:// and chi-ti-somiglia://)
+        const isNativeAppRedirect =
+          location.includes('chi-ti-somiglia://') ||
+          location.includes('exp://');
+
+        if (isNativeAppRedirect) {
+          const scheme = location.includes('chi-ti-somiglia://')
+            ? 'chi-ti-somiglia'
+            : 'exp';
+
           app.logger.info(
-            { originalUrl: location },
-            'Detected native app OAuth redirect'
+            { originalUrl: location, scheme },
+            `Detected ${scheme} native app OAuth redirect`
           );
 
           try {
@@ -91,7 +110,9 @@ app.fastify.addHook('onSend', async (request, reply, payload) => {
             if (Array.isArray(setCookieHeader)) {
               // Parse the Better Auth session cookie
               const sessionCookie = setCookieHeader.find((cookie) =>
-                cookie.includes('better_auth_session') || cookie.includes('sessionToken')
+                cookie.includes('better_auth_session') ||
+                cookie.includes('sessionToken') ||
+                cookie.includes('auth_token')
               );
 
               if (sessionCookie) {
@@ -107,12 +128,16 @@ app.fastify.addHook('onSend', async (request, reply, payload) => {
             if (betterAuthToken) {
               nativeAppUrl.searchParams.set('better_auth_token', betterAuthToken);
               app.logger.info(
-                { redirect_url: nativeAppUrl.toString(), hasToken: true },
+                {
+                  redirect_url: nativeAppUrl.toString(),
+                  hasToken: true,
+                  scheme,
+                },
                 'Native app redirect prepared with token'
               );
             } else {
               app.logger.warn(
-                { redirect_url: location },
+                { redirect_url: location, scheme },
                 'Native app redirect prepared without token (token not yet available)'
               );
             }
