@@ -22,6 +22,17 @@ export const unstable_settings = {
   initialRouteName: "(tabs)",
 };
 
+// Prevent splash screen from auto-hiding (with error handling)
+try {
+  SplashScreen.preventAutoHideAsync().catch(() => {
+    // Ignore error - splash screen might not be available
+    console.log('[SplashScreen] preventAutoHideAsync not available (safe to ignore)');
+  });
+} catch (error) {
+  // Ignore error - splash screen might not be available
+  console.log('[SplashScreen] preventAutoHideAsync error (safe to ignore)');
+}
+
 // Auth Guard Component
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -65,41 +76,26 @@ export default function RootLayout() {
   const [loaded] = useFonts({
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
   });
-  const [splashReady, setSplashReady] = useState(false);
-
-  // Handle splash screen with better error handling
-  useEffect(() => {
-    const prepareSplash = async () => {
-      try {
-        await SplashScreen.preventAutoHideAsync();
-        setSplashReady(true);
-      } catch (error) {
-        // Safe to ignore - splash screen might not be available on re-login or hot reload
-        console.log('[SplashScreen] preventAutoHideAsync not available (safe to ignore):', error);
-        setSplashReady(true); // Still set to true so app can continue
-      }
-    };
-
-    prepareSplash();
-  }, []);
 
   useEffect(() => {
-    if (loaded && splashReady) {
-      // Hide splash screen once fonts are loaded
+    if (loaded) {
+      // Hide splash screen once fonts are loaded (with error handling)
       const hideSplash = async () => {
         try {
           await SplashScreen.hideAsync();
+          console.log('[SplashScreen] Hidden successfully');
         } catch (error) {
-          // Safe to ignore - splash screen might already be hidden
+          // Safe to ignore - splash screen might not be registered or already hidden
           console.log('[SplashScreen] hideAsync error (safe to ignore):', error);
         }
       };
 
-      hideSplash();
+      // Small delay to ensure everything is ready
+      setTimeout(hideSplash, 100);
     }
-  }, [loaded, splashReady]);
+  }, [loaded]);
 
-  if (!loaded || !splashReady) {
+  if (!loaded) {
     return null;
   }
 
