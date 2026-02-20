@@ -25,13 +25,15 @@ export const unstable_settings = {
 // Prevent splash screen from auto-hiding (with error handling)
 try {
   SplashScreen.preventAutoHideAsync().catch(() => {
+    // Ignore error - splash screen might not be available
     console.log('[SplashScreen] preventAutoHideAsync not available (safe to ignore)');
   });
 } catch (error) {
+  // Ignore error - splash screen might not be available
   console.log('[SplashScreen] preventAutoHideAsync error (safe to ignore)');
 }
 
-// Auth Guard Component - Modified to allow unauthenticated access to home
+// Auth Guard Component
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const segments = useSegments();
@@ -48,20 +50,19 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 
     console.log("[AuthGuard] user:", !!user, "loading:", loading, "segments:", segments, "inAuthGroup:", inAuthGroup);
 
-    // If user is logged in and on auth page, redirect to home
-    if (user && inAuthGroup) {
-      console.log("[AuthGuard] User logged in, redirecting to home");
+    if (!user && !inAuthGroup) {
+      console.log("[AuthGuard] Redirecting to /auth");
+      router.replace("/auth");
+    } else if (user && inAuthGroup) {
+      console.log("[AuthGuard] Redirecting to home");
       router.replace("/(tabs)/(home)");
     }
-    
-    // Note: We no longer redirect unauthenticated users to /auth
-    // They can access the app freely, but protected features will require login
   }, [user, loading, segments, router]);
 
   if (loading) {
     return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#1E3A8A" }}>
-        <ActivityIndicator size="large" color="#FCD34D" />
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#000" }}>
+        <ActivityIndicator size="large" color="#FF6B9D" />
       </View>
     );
   }
@@ -78,15 +79,18 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (loaded) {
+      // Hide splash screen once fonts are loaded (with error handling)
       const hideSplash = async () => {
         try {
           await SplashScreen.hideAsync();
           console.log('[SplashScreen] Hidden successfully');
         } catch (error) {
+          // Safe to ignore - splash screen might not be registered or already hidden
           console.log('[SplashScreen] hideAsync error (safe to ignore):', error);
         }
       };
 
+      // Small delay to ensure everything is ready
       setTimeout(hideSplash, 100);
     }
   }, [loaded]);
