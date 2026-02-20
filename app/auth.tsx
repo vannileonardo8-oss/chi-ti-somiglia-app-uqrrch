@@ -1,6 +1,7 @@
 
 import { useRouter } from "expo-router";
 import { useAuth } from "@/contexts/AuthContext";
+import { colors } from "@/styles/commonStyles";
 import {
   View,
   Text,
@@ -33,6 +34,11 @@ export default function AuthScreen() {
   const showError = (message: string) => {
     console.log("[Auth] Showing error:", message);
     setErrorModal({ visible: true, message });
+  };
+
+  const handleSkipLogin = () => {
+    console.log("[Auth] User skipped login, navigating to home");
+    router.replace("/(tabs)/(home)");
   };
 
   const handleEmailAuth = async () => {
@@ -83,14 +89,9 @@ export default function AuthScreen() {
       
       console.log(`[Auth] ${provider} OAuth initiated`);
       
-      // On web: full-page redirect happens inside signInWithGoogle/Apple
-      // The page will navigate away, so we don't need to do anything here.
-      // On native: the deep link will trigger navigation via the URL event listener.
       if (Platform.OS !== "web") {
         router.replace("/(tabs)/(home)");
       }
-      // On web, keep loading=true since the page is about to redirect
-      // (if redirect fails, the error will be caught below)
     } catch (error: any) {
       console.error(`[Auth] ${provider} OAuth error:`, error);
       
@@ -116,7 +117,6 @@ export default function AuthScreen() {
       showError(errorMessage);
       setLoading(false);
     }
-    // Note: on web success, don't call setLoading(false) - page is redirecting
   };
 
   return (
@@ -138,6 +138,7 @@ export default function AuthScreen() {
             <TextInput
               style={styles.input}
               placeholder="Nome"
+              placeholderTextColor="#93C5FD"
               value={name}
               onChangeText={setName}
               autoCapitalize="words"
@@ -148,6 +149,7 @@ export default function AuthScreen() {
           <TextInput
             style={styles.input}
             placeholder="Email"
+            placeholderTextColor="#93C5FD"
             value={email}
             onChangeText={setEmail}
             keyboardType="email-address"
@@ -158,6 +160,7 @@ export default function AuthScreen() {
           <TextInput
             style={styles.input}
             placeholder="Password"
+            placeholderTextColor="#93C5FD"
             value={password}
             onChangeText={setPassword}
             secureTextEntry
@@ -215,6 +218,15 @@ export default function AuthScreen() {
                 : "Hai già un account? Accedi"}
             </Text>
           </TouchableOpacity>
+
+          {/* Skip Login Button */}
+          <TouchableOpacity
+            style={styles.skipButton}
+            onPress={handleSkipLogin}
+            disabled={loading}
+          >
+            <Text style={styles.skipButtonText}>SALTA IL LOGIN</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
 
@@ -245,7 +257,7 @@ export default function AuthScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#000",
+    backgroundColor: colors.background,
   },
   scrollContent: {
     flexGrow: 1,
@@ -260,28 +272,28 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 32,
     fontWeight: "bold",
-    color: "#fff",
+    color: colors.text,
     marginBottom: 8,
     textAlign: "center",
   },
   subtitle: {
     fontSize: 16,
-    color: "#999",
+    color: colors.textSecondary,
     marginBottom: 32,
     textAlign: "center",
   },
   input: {
-    backgroundColor: "#1c1c1e",
+    backgroundColor: colors.card,
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
     fontSize: 16,
-    color: "#fff",
+    color: colors.text,
     borderWidth: 1,
-    borderColor: "#2c2c2e",
+    borderColor: colors.border,
   },
   button: {
-    backgroundColor: "#007AFF",
+    backgroundColor: colors.primary,
     borderRadius: 12,
     padding: 16,
     alignItems: "center",
@@ -303,10 +315,10 @@ const styles = StyleSheet.create({
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: "#2c2c2e",
+    backgroundColor: colors.border,
   },
   dividerText: {
-    color: "#999",
+    color: colors.textSecondary,
     paddingHorizontal: 16,
     fontSize: 14,
   },
@@ -338,39 +350,57 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   switchButtonText: {
-    color: "#007AFF",
+    color: colors.primary,
     fontSize: 14,
+  },
+  skipButton: {
+    marginTop: 32,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    alignItems: "center",
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: colors.secondary,
+    backgroundColor: "transparent",
+  },
+  skipButtonText: {
+    color: colors.secondary,
+    fontSize: 18,
+    fontWeight: "bold",
+    letterSpacing: 1,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
     justifyContent: "center",
     alignItems: "center",
     padding: 20,
   },
   modalContent: {
-    backgroundColor: "#1c1c1e",
+    backgroundColor: colors.card,
     borderRadius: 16,
     padding: 24,
     width: "100%",
     maxWidth: 400,
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   modalTitle: {
     fontSize: 20,
     fontWeight: "bold",
-    color: "#fff",
+    color: colors.text,
     marginBottom: 12,
   },
   modalMessage: {
     fontSize: 16,
-    color: "#999",
+    color: colors.textSecondary,
     textAlign: "center",
     marginBottom: 24,
     lineHeight: 22,
   },
   modalButton: {
-    backgroundColor: "#007AFF",
+    backgroundColor: colors.primary,
     borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 32,
