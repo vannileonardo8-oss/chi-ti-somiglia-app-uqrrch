@@ -21,7 +21,6 @@ import * as Haptics from 'expo-haptics';
 import { apiGet } from '@/utils/api';
 import ViewShot from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
-import { useAuth } from '@/contexts/AuthContext';
 
 interface Reason {
   feature: string;
@@ -52,7 +51,6 @@ export default function ResultsScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
   const viewShotRef = useRef<ViewShot>(null);
-  const { user } = useAuth();
 
   const [result, setResult] = useState<ComparisonResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -61,7 +59,6 @@ export default function ResultsScreen() {
     visible: false,
     message: '',
   });
-  const [loginPromptModal, setLoginPromptModal] = useState(false);
 
   const bgColor = colors.background;
   const textColor = colors.text;
@@ -121,13 +118,6 @@ export default function ResultsScreen() {
     console.log('User tapped share button');
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     
-    // Check if user is logged in
-    if (!user) {
-      console.log('[Share] User not logged in, showing login prompt');
-      setLoginPromptModal(true);
-      return;
-    }
-    
     if (!result || !viewShotRef.current) {
       return;
     }
@@ -171,12 +161,6 @@ export default function ResultsScreen() {
     } finally {
       setSharing(false);
     }
-  };
-
-  const handleLoginRedirect = () => {
-    console.log('[Share] Redirecting to login page');
-    setLoginPromptModal(false);
-    router.push('/auth');
   };
 
   const handleNewComparison = () => {
@@ -479,42 +463,6 @@ export default function ResultsScreen() {
 
           <View style={{ height: 100 }} />
         </ScrollView>
-
-        {/* Login Prompt Modal */}
-        <Modal
-          visible={loginPromptModal}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setLoginPromptModal(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={[styles.modalContent, { backgroundColor: cardColor }]}>
-              <Text style={styles.modalEmoji}>🔒</Text>
-              <Text style={[styles.modalTitle, { color: textColor }]}>Accesso Richiesto</Text>
-              <Text style={[styles.modalMessage, { color: textSecondaryColor }]}>
-                Per condividere i risultati devi effettuare l&apos;accesso. Vuoi accedere ora?
-              </Text>
-              <View style={styles.modalButtons}>
-                <TouchableOpacity
-                  style={[styles.modalButton, { backgroundColor: secondaryColor }]}
-                  onPress={handleLoginRedirect}
-                >
-                  <Text style={[styles.modalButtonText, { color: colors.background }]}>
-                    Accedi
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.modalButton, styles.modalButtonSecondary, { borderColor: textSecondaryColor }]}
-                  onPress={() => setLoginPromptModal(false)}
-                >
-                  <Text style={[styles.modalButtonText, { color: textColor }]}>
-                    Annulla
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </Modal>
 
         {/* Error Modal */}
         <Modal
@@ -846,21 +794,11 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     lineHeight: 22,
   },
-  modalButtons: {
-    flexDirection: 'row',
-    gap: 12,
-    width: '100%',
-  },
   modalButton: {
-    flex: 1,
     paddingVertical: 12,
-    paddingHorizontal: 24,
+    paddingHorizontal: 32,
     borderRadius: 12,
-    alignItems: 'center',
-  },
-  modalButtonSecondary: {
-    backgroundColor: 'transparent',
-    borderWidth: 2,
+    minWidth: 100,
   },
   modalButtonText: {
     fontSize: 16,
