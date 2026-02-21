@@ -2,6 +2,7 @@ import { createApplication } from "@specific-dev/framework";
 import * as appSchema from './db/schema.js';
 import * as authSchema from './db/auth-schema.js';
 import { registerComparisonsRoutes } from './routes/comparisons.js';
+import { registerFaceDetectionRoutes } from './routes/face-detection.js';
 
 const schema = { ...appSchema, ...authSchema };
 
@@ -60,6 +61,7 @@ app.withStorage();
 // Register routes - add your route modules here
 // IMPORTANT: Always use registration functions to avoid circular dependency issues
 registerComparisonsRoutes(app);
+registerFaceDetectionRoutes(app);
 
 // Add logging for OAuth flow debugging
 app.fastify.addHook('preHandler', async (request, reply) => {
