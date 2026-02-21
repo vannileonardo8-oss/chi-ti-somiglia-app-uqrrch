@@ -12,8 +12,17 @@ export default function AuthCallbackScreen() {
 
   useEffect(() => {
     if (Platform.OS !== "web") {
-      // On native, this screen shouldn't be shown - redirect to home
-      router.replace("/(tabs)/(home)");
+      // On native, this screen is reached via deep link after OAuth
+      // The expoClient plugin should have already processed the callback
+      // Just wait a moment and redirect to home
+      console.log("[AuthCallback Native] Processing OAuth callback...");
+      setStatus("success");
+      setMessage("Autenticazione riuscita!");
+      
+      setTimeout(() => {
+        console.log("[AuthCallback Native] Redirecting to home...");
+        router.replace("/(tabs)/(home)");
+      }, 1000);
       return;
     }
 

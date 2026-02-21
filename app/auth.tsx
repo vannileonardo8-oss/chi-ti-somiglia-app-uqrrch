@@ -81,16 +81,19 @@ export default function AuthScreen() {
         await signInWithApple();
       }
       
-      console.log(`[Auth] ${provider} OAuth initiated`);
+      console.log(`[Auth] ${provider} OAuth initiated successfully`);
       
-      // On web: full-page redirect happens inside signInWithGoogle/Apple
-      // The page will navigate away, so we don't need to do anything here.
-      // On native: the deep link will trigger navigation via the URL event listener.
-      if (Platform.OS !== "web") {
-        router.replace("/(tabs)/(home)");
+      // On native: Don't navigate immediately - let the deep link handler do it
+      // The AuthGuard in _layout.tsx will redirect to home once user is set
+      if (Platform.OS === "web") {
+        // On web: full-page redirect happens, so we won't reach here
+        // Keep loading state active
+      } else {
+        // On native: OAuth will return via deep link
+        // Don't navigate here - the AuthContext will update user state
+        // and AuthGuard will handle navigation
+        console.log("[Auth] Waiting for OAuth callback via deep link...");
       }
-      // On web, keep loading=true since the page is about to redirect
-      // (if redirect fails, the error will be caught below)
     } catch (error: any) {
       console.error(`[Auth] ${provider} OAuth error:`, error);
       
@@ -116,7 +119,11 @@ export default function AuthScreen() {
       showError(errorMessage);
       setLoading(false);
     }
-    // Note: on web success, don't call setLoading(false) - page is redirecting
+  };
+
+  const handleSkipLogin = () => {
+    console.log("[Auth] User skipped login");
+    router.replace("/(tabs)/(home)");
   };
 
   return (
@@ -138,6 +145,7 @@ export default function AuthScreen() {
             <TextInput
               style={styles.input}
               placeholder="Nome"
+              placeholderTextColor="#999"
               value={name}
               onChangeText={setName}
               autoCapitalize="words"
@@ -148,6 +156,7 @@ export default function AuthScreen() {
           <TextInput
             style={styles.input}
             placeholder="Email"
+            placeholderTextColor="#999"
             value={email}
             onChangeText={setEmail}
             keyboardType="email-address"
@@ -158,6 +167,7 @@ export default function AuthScreen() {
           <TextInput
             style={styles.input}
             placeholder="Password"
+            placeholderTextColor="#999"
             value={password}
             onChangeText={setPassword}
             secureTextEntry
@@ -205,6 +215,14 @@ export default function AuthScreen() {
           )}
 
           <TouchableOpacity
+            style={styles.skipButton}
+            onPress={handleSkipLogin}
+            disabled={loading}
+          >
+            <Text style={styles.skipButtonText}>SALTA IL LOGIN</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
             style={styles.switchButton}
             onPress={() => setMode(mode === "signin" ? "signup" : "signin")}
             disabled={loading}
@@ -245,7 +263,7 @@ export default function AuthScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#000",
+    backgroundColor: "#fff",
   },
   scrollContent: {
     flexGrow: 1,
@@ -260,25 +278,25 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 32,
     fontWeight: "bold",
-    color: "#fff",
+    color: "#000",
     marginBottom: 8,
     textAlign: "center",
   },
   subtitle: {
     fontSize: 16,
-    color: "#999",
+    color: "#666",
     marginBottom: 32,
     textAlign: "center",
   },
   input: {
-    backgroundColor: "#1c1c1e",
+    backgroundColor: "#f5f5f5",
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
     fontSize: 16,
-    color: "#fff",
+    color: "#000",
     borderWidth: 1,
-    borderColor: "#2c2c2e",
+    borderColor: "#e0e0e0",
   },
   button: {
     backgroundColor: "#007AFF",
@@ -303,10 +321,10 @@ const styles = StyleSheet.create({
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: "#2c2c2e",
+    backgroundColor: "#e0e0e0",
   },
   dividerText: {
-    color: "#999",
+    color: "#666",
     paddingHorizontal: 16,
     fontSize: 14,
   },
@@ -323,7 +341,7 @@ const styles = StyleSheet.create({
   },
   appleButton: {
     backgroundColor: "#000",
-    borderColor: "#fff",
+    borderColor: "#000",
   },
   socialButtonText: {
     fontSize: 16,
@@ -333,8 +351,19 @@ const styles = StyleSheet.create({
   appleButtonText: {
     color: "#fff",
   },
+  skipButton: {
+    marginTop: 16,
+    padding: 12,
+    alignItems: "center",
+  },
+  skipButtonText: {
+    color: "#007AFF",
+    fontSize: 16,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+  },
   switchButton: {
-    marginTop: 24,
+    marginTop: 16,
     alignItems: "center",
   },
   switchButtonText: {
@@ -349,7 +378,7 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   modalContent: {
-    backgroundColor: "#1c1c1e",
+    backgroundColor: "#fff",
     borderRadius: 16,
     padding: 24,
     width: "100%",
@@ -359,12 +388,12 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 20,
     fontWeight: "bold",
-    color: "#fff",
+    color: "#000",
     marginBottom: 12,
   },
   modalMessage: {
     fontSize: 16,
-    color: "#999",
+    color: "#666",
     textAlign: "center",
     marginBottom: 24,
     lineHeight: 22,

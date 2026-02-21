@@ -114,11 +114,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Listen for deep links (e.g. from social auth redirects)
     const subscription = Linking.addEventListener("url", (event) => {
       console.log("[AuthContext] Deep link received:", event.url);
-      // Allow time for the client to process the token if needed
-      setTimeout(() => {
-        console.log("[AuthContext] Refreshing user session after deep link");
-        fetchUser();
-      }, 500);
+      
+      // Parse the URL to check if it's an auth callback
+      const url = event.url;
+      if (url.includes("auth-callback")) {
+        console.log("[AuthContext] Auth callback detected, refreshing user session...");
+        // Give the auth client time to process the callback
+        setTimeout(() => {
+          fetchUser();
+        }, 1000);
+      }
     });
 
     // POLLING: Refresh session every 5 minutes to keep SecureStore token in sync
@@ -240,9 +245,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.log(`[AuthContext] Using native OAuth flow for ${provider}`);
         // Native: Use the expoClient plugin which handles OAuth via expo-web-browser
         // The callbackURL uses the app scheme for deep linking back to the app
-        // Note: app.json scheme "Chi ti somiglia?" is invalid for deep links,
-        // so we use the sanitized "chi-ti-somiglia" scheme configured in expoClient
-        const callbackURL = "chi-ti-somiglia://auth-callback";
+        const callbackURL = Linking.createURL("auth-callback");
         console.log(`[AuthContext] Callback URL:`, callbackURL);
         
         const result = await authClient.signIn.social({
@@ -266,9 +269,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           throw new Error(errMsg);
         }
         
-        // The redirect will reload the app or be handled by deep linking
-        // fetchUser will be called via the URL event listener
-        console.log(`[AuthContext] OAuth redirect initiated for ${provider}`);
+        // The OAuth flow will return via deep link
+        // The URL event listener above will trigger fetchUser()
+        console.log(`[AuthContext] OAuth redirect initiated for ${provider}, waiting for callback...`);
+        
+        // Wait a bit for the callback to complete
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // Fetch user to check if auth succeeded
+        await fetchUser();
       }
     } catch (error) {
       console.error(`[AuthContext] ${provider} sign in failed:`, error);
