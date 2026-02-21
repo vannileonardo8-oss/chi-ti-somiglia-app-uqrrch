@@ -11,31 +11,6 @@ export const app = await createApplication(schema);
 // Export App type for use in route files
 export type App = typeof app;
 
-// Build OAuth provider configuration from environment variables
-const socialProviders: any = {};
-
-// Only add Google provider if credentials are provided
-if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
-  socialProviders.google = {
-    clientId: process.env.GOOGLE_CLIENT_ID,
-    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-  };
-  app.logger.info('Google OAuth provider configured');
-} else {
-  app.logger.warn('Google OAuth credentials not found - Google sign-in will be disabled');
-}
-
-// Only add Apple provider if credentials are provided
-if (process.env.APPLE_CLIENT_ID && process.env.APPLE_CLIENT_SECRET) {
-  socialProviders.apple = {
-    clientId: process.env.APPLE_CLIENT_ID,
-    clientSecret: process.env.APPLE_CLIENT_SECRET,
-  };
-  app.logger.info('Apple OAuth provider configured');
-} else {
-  app.logger.warn('Apple OAuth credentials not found - Apple sign-in will be disabled');
-}
-
 // Enable authentication with OAuth providers and native app scheme support
 app.withAuth({
   // Trust the chi-ti-somiglia native app scheme and Expo deep links
@@ -46,12 +21,18 @@ app.withAuth({
     'exp://**',
     'exp://10.0.0.*:*/**',
     'http://localhost:*',
-    'https://**',
   ],
-  // Configure OAuth providers only if credentials are available
-  ...(Object.keys(socialProviders).length > 0 && {
-    socialProviders,
-  }),
+  // Configure OAuth providers with environment variables
+  socialProviders: {
+    google: {
+      clientId: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    },
+    apple: {
+      clientId: process.env.APPLE_CLIENT_ID,
+      clientSecret: process.env.APPLE_CLIENT_SECRET,
+    },
+  },
 });
 
 // Enable storage
@@ -61,58 +42,11 @@ app.withStorage();
 // IMPORTANT: Always use registration functions to avoid circular dependency issues
 registerComparisonsRoutes(app);
 
-// Add logging for OAuth flow debugging
-app.fastify.addHook('preHandler', async (request, reply) => {
-  // Log OAuth-related requests
-  if (request.url.includes('/api/auth/')) {
-    const body = request.body as any;
-    const query = request.query as any;
-
-    app.logger.info(
-      {
-        path: request.url,
-        method: request.method,
-        provider: body?.provider || query?.provider,
-        redirectUri: body?.redirectUri || query?.redirectUri || body?.redirect_uri,
-        origin: request.headers.origin,
-      },
-      'OAuth request received'
-    );
-
-    // Log social sign-in requests specifically
-    if (request.url.includes('/sign-in/social')) {
-      app.logger.info(
-        {
-          provider: body?.provider,
-          redirectUri: body?.redirectUri || body?.redirect_uri,
-          hasCallbackUrl: !!body?.callbackURL,
-        },
-        'Social sign-in request'
-      );
-    }
-  }
-});
-
 // Custom handler for OAuth redirects
 // 1. Forces Google account selection screen
 // 2. Handles native app redirects with token in query parameters
-// 3. Logs errors for debugging
 app.fastify.addHook('onSend', async (request, reply, payload) => {
   try {
-    // Log error responses on auth endpoints
-    if (request.url.includes('/api/auth/') && reply.statusCode >= 400) {
-      app.logger.warn(
-        {
-          path: request.url,
-          method: request.method,
-          statusCode: reply.statusCode,
-          provider: (request.body as any)?.provider,
-          errorMessage: typeof payload === 'string' ? payload : undefined,
-        },
-        'OAuth error response'
-      );
-    }
-
     // Check if this is a redirect response from Better Auth's OAuth flow
     if ((reply.statusCode === 302 || reply.statusCode === 303) && request.url.includes('/api/auth/')) {
       const location = reply.getHeader('location');
@@ -223,22 +157,6 @@ app.fastify.addHook('onSend', async (request, reply, payload) => {
   }
 
   return payload;
-});
-
-// Add error handler for auth-related errors
-app.fastify.addHook('onError', async (request, reply, error) => {
-  if (request.url.includes('/api/auth/')) {
-    app.logger.error(
-      {
-        err: error,
-        path: request.url,
-        method: request.method,
-        statusCode: reply.statusCode,
-        provider: (request.body as any)?.provider,
-      },
-      'Authentication error'
-    );
-  }
 });
 
 await app.run();
