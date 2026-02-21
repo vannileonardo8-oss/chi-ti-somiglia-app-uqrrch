@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { View, Text, ActivityIndicator, StyleSheet } from "react-native";
 import { Platform } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { authClient, setBearerToken } from "@/lib/auth";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -11,6 +11,7 @@ export default function AuthCallbackScreen() {
   const [message, setMessage] = useState("Elaborazione autenticazione...");
   const router = useRouter();
   const { fetchUser } = useAuth();
+  const params = useLocalSearchParams();
 
   useEffect(() => {
     const handleCallback = async () => {
@@ -18,16 +19,61 @@ export default function AuthCallbackScreen() {
         if (Platform.OS !== "web") {
           // On native, this screen is reached via deep link after OAuth
           console.log("[AuthCallback Native] Processing OAuth callback...");
-          console.log("[AuthCallback Native] Current URL:", window.location?.href || "N/A (native)");
+          console.log("[AuthCallback Native] URL params:", JSON.stringify(params));
           
-          // Wait longer for the OAuth flow to complete and cookies to be set
-          console.log("[AuthCallback Native] Waiting for session to be established...");
-          await new Promise((resolve) => setTimeout(resolve, 2000));
+          // Extract token from URL parameters
+          // The backend sends: ?cookie=better-auth.session_token%3D<token>&better_auth_token=<token>
+          const betterAuthToken = params.better_auth_token as string;
+          const cookieParam = params.cookie as string;
           
-          // Try to fetch the session multiple times with retries
+          let extractedToken: string | null = null;
+          
+          // Try to extract token from better_auth_token parameter
+          if (betterAuthToken) {
+            console.log("[AuthCallback Native] Found better_auth_token in URL");
+            extractedToken = betterAuthToken;
+          }
+          
+          // Try to extract token from cookie parameter
+          if (!extractedToken && cookieParam) {
+            console.log("[AuthCallback Native] Parsing cookie parameter:", cookieParam);
+            // cookie format: "better-auth.session_token=<token>"
+            const match = cookieParam.match(/better-auth\.session_token[=%]([^&]+)/);
+            if (match && match[1]) {
+              extractedToken = decodeURIComponent(match[1]);
+              console.log("[AuthCallback Native] Extracted token from cookie parameter");
+            }
+          }
+          
+          if (extractedToken) {
+            console.log("[AuthCallback Native] Token found, storing...");
+            await setBearerToken(extractedToken);
+            
+            // Wait a moment for the token to be stored
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            
+            // Fetch user session with the new token
+            console.log("[AuthCallback Native] Fetching user session with token...");
+            await fetchUser();
+            
+            setStatus("success");
+            setMessage("Autenticazione riuscita!");
+            
+            // Redirect to home
+            setTimeout(() => {
+              console.log("[AuthCallback Native] Redirecting to home...");
+              router.replace("/(tabs)/(home)");
+            }, 800);
+            return;
+          }
+          
+          // Fallback: try to fetch session from Better Auth (cookie-based)
+          console.log("[AuthCallback Native] No token in URL, trying session fetch...");
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+          
           let session = null;
           let attempts = 0;
-          const maxAttempts = 5;
+          const maxAttempts = 3;
           
           while (!session?.data?.user && attempts < maxAttempts) {
             attempts++;
@@ -55,7 +101,7 @@ export default function AuthCallbackScreen() {
             // Store token if available
             if (session.data.session?.token) {
               await setBearerToken(session.data.session.token);
-              console.log("[AuthCallback Native] Token stored");
+              console.log("[AuthCallback Native] Token stored from session");
             }
             
             // Trigger a user fetch in AuthContext to update global state
@@ -199,7 +245,7 @@ export default function AuthCallbackScreen() {
     };
 
     handleCallback();
-  }, []);
+  }, [params]);
 
   return (
     <View style={styles.container}>
