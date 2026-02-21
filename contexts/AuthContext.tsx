@@ -235,12 +235,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         console.log(`[AuthContext] Using native OAuth flow for ${provider}`);
         // Native: Use the expoClient plugin which handles OAuth via expo-web-browser
-        const callbackURL = Linking.createURL("auth-callback");
-        console.log(`[AuthContext] Callback URL:`, callbackURL);
-        
+        // IMPORTANT: For Expo Go, we need to use the Expo Go redirect URL format
+        // The expoClient plugin will handle this automatically
         const result = await authClient.signIn.social({
           provider,
-          callbackURL,
+          // Don't specify callbackURL - let expoClient plugin handle it
+          // It will use the correct scheme (exp:// for Expo Go, custom scheme for standalone)
         });
 
         console.log(`[AuthContext] Native signIn.social result:`, JSON.stringify(result));

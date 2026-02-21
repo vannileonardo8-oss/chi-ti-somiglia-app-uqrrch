@@ -18,19 +18,40 @@ export default function AuthCallbackScreen() {
         if (Platform.OS !== "web") {
           // On native, this screen is reached via deep link after OAuth
           console.log("[AuthCallback Native] Processing OAuth callback...");
+          console.log("[AuthCallback Native] Current URL:", window.location?.href || "N/A (native)");
+          
+          // Wait longer for the OAuth flow to complete and cookies to be set
           console.log("[AuthCallback Native] Waiting for session to be established...");
+          await new Promise((resolve) => setTimeout(resolve, 2000));
           
-          // Wait a bit longer for the OAuth flow to complete
-          await new Promise((resolve) => setTimeout(resolve, 1500));
+          // Try to fetch the session multiple times with retries
+          let session = null;
+          let attempts = 0;
+          const maxAttempts = 5;
           
-          // Try to fetch the session
-          console.log("[AuthCallback Native] Fetching session...");
-          const session = await authClient.getSession();
-          console.log("[AuthCallback Native] Session:", JSON.stringify(session));
+          while (!session?.data?.user && attempts < maxAttempts) {
+            attempts++;
+            console.log(`[AuthCallback Native] Fetching session (attempt ${attempts}/${maxAttempts})...`);
+            
+            try {
+              session = await authClient.getSession();
+              console.log(`[AuthCallback Native] Session (attempt ${attempts}):`, JSON.stringify(session));
+              
+              if (session?.data?.user) {
+                console.log("[AuthCallback Native] User found:", session.data.user.email);
+                break;
+              }
+            } catch (err) {
+              console.error(`[AuthCallback Native] Session fetch error (attempt ${attempts}):`, err);
+            }
+            
+            // Wait before retrying
+            if (attempts < maxAttempts) {
+              await new Promise((resolve) => setTimeout(resolve, 1000));
+            }
+          }
           
           if (session?.data?.user) {
-            console.log("[AuthCallback Native] User found:", session.data.user.email);
-            
             // Store token if available
             if (session.data.session?.token) {
               await setBearerToken(session.data.session.token);
@@ -49,13 +70,13 @@ export default function AuthCallbackScreen() {
               router.replace("/(tabs)/(home)");
             }, 800);
           } else {
-            console.error("[AuthCallback Native] No user in session");
+            console.error("[AuthCallback Native] No user in session after all attempts");
             setStatus("error");
-            setMessage("Autenticazione fallita - riprova");
+            setMessage("Autenticazione fallita - sessione non trovata. Riprova.");
             
             setTimeout(() => {
               router.replace("/auth");
-            }, 2000);
+            }, 2500);
           }
           return;
         }
