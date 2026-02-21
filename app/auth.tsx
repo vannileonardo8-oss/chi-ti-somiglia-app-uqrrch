@@ -121,11 +121,6 @@ export default function AuthScreen() {
     }
   };
 
-  const handleSkipLogin = () => {
-    console.log("[Auth] User skipped login");
-    router.replace("/(tabs)/(home)");
-  };
-
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -213,14 +208,6 @@ export default function AuthScreen() {
               </Text>
             </TouchableOpacity>
           )}
-
-          <TouchableOpacity
-            style={styles.skipButton}
-            onPress={handleSkipLogin}
-            disabled={loading}
-          >
-            <Text style={styles.skipButtonText}>SALTA IL LOGIN</Text>
-          </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.switchButton}
@@ -350,17 +337,6 @@ const styles = StyleSheet.create({
   },
   appleButtonText: {
     color: "#fff",
-  },
-  skipButton: {
-    marginTop: 16,
-    padding: 12,
-    alignItems: "center",
-  },
-  skipButtonText: {
-    color: "#007AFF",
-    fontSize: 16,
-    fontWeight: "700",
-    letterSpacing: 0.5,
   },
   switchButton: {
     marginTop: 16,

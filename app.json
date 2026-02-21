@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Chi ti somiglia?",
-    "slug": "Chi ti somiglia?",
+    "slug": "chi-ti-somiglia",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/app-icon-gsi.png",
@@ -36,7 +36,7 @@
       "expo-router",
       "expo-web-browser"
     ],
-    "scheme": "Chi ti somiglia?",
+    "scheme": "chi-ti-somiglia",
     "experiments": {
       "typedRoutes": true
     },

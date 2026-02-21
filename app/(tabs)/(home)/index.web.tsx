@@ -1,13 +1,9 @@
 
-import React, { useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
-import * as ImageManipulator from 'expo-image-manipulator';
-import { IconSymbol } from '@/components/IconSymbol';
-import { LinearGradient } from 'expo-linear-gradient';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
-import { Stack, useRouter } from 'expo-router';
-import { useAuth } from '@/contexts/AuthContext';
+import { LinearGradient } from 'expo-linear-gradient';
+import { IconSymbol } from '@/components/IconSymbol';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -20,11 +16,23 @@ import {
   Modal,
   Platform,
 } from 'react-native';
+import { Stack, useRouter } from 'expo-router';
+import React, { useState } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import { BACKEND_URL, authenticatedPost, getBearerToken } from '@/utils/api';
+import * as ImageManipulator from 'expo-image-manipulator';
+import { FaceSelector } from '@/components/FaceSelector';
 
 interface ImageData {
   uri: string;
   label: string;
+}
+
+interface Face {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 export default function HomeScreen() {
@@ -34,17 +42,34 @@ export default function HomeScreen() {
   const [mainImage, setMainImage] = useState<ImageData | null>(null);
   const [compareImage1, setCompareImage1] = useState<ImageData | null>(null);
   const [compareImage2, setCompareImage2] = useState<ImageData | null>(null);
+  const [mainImageUrl, setMainImageUrl] = useState<string | null>(null);
+  const [compareImage1Url, setCompareImage1Url] = useState<string | null>(null);
+  const [compareImage2Url, setCompareImage2Url] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [errorModal, setErrorModal] = useState<{ visible: boolean; message: string }>({
     visible: false,
     message: '',
   });
   const [logoutModal, setLogoutModal] = useState(false);
+  
+  // Face detection state
+  const [faceDetectionModal, setFaceDetectionModal] = useState<{
+    visible: boolean;
+    imageUri: string;
+    faces: Face[];
+    type: 'main' | 'compare1' | 'compare2';
+  }>({
+    visible: false,
+    imageUri: '',
+    faces: [],
+    type: 'main',
+  });
+  const [detectingFaces, setDetectingFaces] = useState(false);
+  const [detectingFacesFor, setDetectingFacesFor] = useState<'main' | 'compare1' | 'compare2' | null>(null);
 
   const textColor = colors.text;
   const textSecondaryColor = colors.textSecondary;
   const cardColor = colors.card;
-  const primaryColor = colors.primary;
   const secondaryColor = colors.secondary;
   const accentColor = colors.accent;
   const purpleColor = colors.purple;
@@ -80,6 +105,18 @@ export default function HomeScreen() {
     }
   };
 
+  const detectFaces = async (imageUrl: string): Promise<{ faceCount: number; faces: Face[] }> => {
+    console.log('[FaceDetection] Detecting faces in image:', imageUrl);
+    try {
+      const result = await authenticatedPost('/api/detect-faces', { imageUrl });
+      console.log('[FaceDetection] Result:', result);
+      return result;
+    } catch (error) {
+      console.error('[FaceDetection] Error:', error);
+      throw error;
+    }
+  };
+
   const pickImage = async (type: 'main' | 'compare1' | 'compare2') => {
     console.log('User tapped pick image button for:', type);
     
@@ -100,19 +137,112 @@ export default function HomeScreen() {
     if (!result.canceled && result.assets[0]) {
       console.log('Image selected:', result.assets[0].uri);
       const compressedUri = await compressImage(result.assets[0].uri);
-      const imageData: ImageData = {
-        uri: compressedUri,
-        label: '',
-      };
-
-      if (type === 'main') {
-        setMainImage(imageData);
-      } else if (type === 'compare1') {
-        setCompareImage1(imageData);
-      } else {
-        setCompareImage2(imageData);
+      
+      // Upload image first to get URL for face detection
+      setDetectingFaces(true);
+      setDetectingFacesFor(type);
+      try {
+        const uploadedUrl = await uploadImage(compressedUri);
+        console.log('[FaceDetection] Image uploaded, detecting faces...');
+        
+        // Store the uploaded URL to avoid re-uploading during analysis
+        if (type === 'main') setMainImageUrl(uploadedUrl);
+        else if (type === 'compare1') setCompareImage1Url(uploadedUrl);
+        else setCompareImage2Url(uploadedUrl);
+        
+        const faceResult = await detectFaces(uploadedUrl);
+        
+        if (faceResult.faceCount === 0) {
+          showError('Nessun volto rilevato nell\'immagine. Carica una foto con almeno un volto.');
+          // Clear the stored URL since image was rejected
+          if (type === 'main') setMainImageUrl(null);
+          else if (type === 'compare1') setCompareImage1Url(null);
+          else setCompareImage2Url(null);
+          setDetectingFaces(false);
+          setDetectingFacesFor(null);
+          return;
+        }
+        
+        if (faceResult.faceCount === 1) {
+          // Only one face, use it directly
+          console.log('[FaceDetection] Single face detected, using automatically');
+          const imageData: ImageData = {
+            uri: compressedUri,
+            label: '',
+          };
+          
+          if (type === 'main') {
+            setMainImage(imageData);
+          } else if (type === 'compare1') {
+            setCompareImage1(imageData);
+          } else {
+            setCompareImage2(imageData);
+          }
+          setDetectingFaces(false);
+          setDetectingFacesFor(null);
+        } else {
+          // Multiple faces, show selector
+          console.log('[FaceDetection] Multiple faces detected, showing selector');
+          setFaceDetectionModal({
+            visible: true,
+            imageUri: compressedUri,
+            faces: faceResult.faces,
+            type,
+          });
+          setDetectingFaces(false);
+          setDetectingFacesFor(null);
+        }
+      } catch (error: any) {
+        console.error('[FaceDetection] Error:', error);
+        showError('Errore durante il rilevamento dei volti. Riprova.');
+        // Clear the stored URL on error
+        if (type === 'main') setMainImageUrl(null);
+        else if (type === 'compare1') setCompareImage1Url(null);
+        else setCompareImage2Url(null);
+        setDetectingFaces(false);
+        setDetectingFacesFor(null);
       }
     }
+  };
+
+  const handleFaceSelected = (faceIndex: number) => {
+    console.log('[FaceDetection] User selected face:', faceIndex);
+    
+    const imageData: ImageData = {
+      uri: faceDetectionModal.imageUri,
+      label: '',
+    };
+    
+    const type = faceDetectionModal.type;
+    if (type === 'main') {
+      setMainImage(imageData);
+    } else if (type === 'compare1') {
+      setCompareImage1(imageData);
+    } else {
+      setCompareImage2(imageData);
+    }
+    
+    setFaceDetectionModal({
+      visible: false,
+      imageUri: '',
+      faces: [],
+      type: 'main',
+    });
+  };
+
+  const handleFaceCancelled = () => {
+    console.log('[FaceDetection] User cancelled face selection');
+    // Clear the stored URL since user cancelled
+    const cancelledType = faceDetectionModal.type;
+    if (cancelledType === 'main') setMainImageUrl(null);
+    else if (cancelledType === 'compare1') setCompareImage1Url(null);
+    else setCompareImage2Url(null);
+    setFaceDetectionModal({
+      visible: false,
+      imageUri: '',
+      faces: [],
+      type: 'main',
+    });
   };
 
   const updateLabel = (type: 'main' | 'compare1' | 'compare2', label: string) => {
@@ -128,63 +258,33 @@ export default function HomeScreen() {
   const uploadImage = async (imageUri: string): Promise<string> => {
     console.log('[API] Uploading image (web):', imageUri);
     
-    const formData = new FormData();
+    // On web, convert data URI to Blob
+    const response = await fetch(imageUri);
+    const blob = await response.blob();
     
-    // On web, expo-image-picker returns a blob URL or data URL
-    // We need to fetch the blob and append it as a File object
-    try {
-      let fileBlob: Blob;
-      let fileName = 'photo.jpg';
-      
-      if (imageUri.startsWith('blob:') || imageUri.startsWith('data:')) {
-        // Fetch the blob from the blob URL or data URL
-        const blobResponse = await fetch(imageUri);
-        fileBlob = await blobResponse.blob();
-        
-        // Determine file extension from mime type
-        const mimeType = fileBlob.type || 'image/jpeg';
-        const ext = mimeType.split('/')[1] || 'jpg';
-        fileName = `photo.${ext}`;
-      } else {
-        // Fallback: treat as regular URL
-        const blobResponse = await fetch(imageUri);
-        fileBlob = await blobResponse.blob();
-        const uriParts = imageUri.split('.');
-        const fileType = uriParts[uriParts.length - 1] || 'jpg';
-        fileName = `photo.${fileType}`;
-      }
-      
-      const file = new File([fileBlob], fileName, { type: fileBlob.type || 'image/jpeg' });
-      formData.append('image', file);
-      
-      console.log('[API] File prepared for upload:', fileName, 'size:', fileBlob.size);
-    } catch (blobError) {
-      console.error('[API] Failed to process image blob, trying direct append:', blobError);
-      // Last resort fallback
-      const uriParts = imageUri.split('.');
-      const fileType = uriParts[uriParts.length - 1] || 'jpg';
-      formData.append('image', imageUri as any);
-    }
+    const formData = new FormData();
+    formData.append('image', blob, 'photo.jpg');
     
     const token = await getBearerToken();
     
-    const response = await fetch(`${BACKEND_URL}/api/upload/image`, {
+    console.log('[API] Sending upload request to:', `${BACKEND_URL}/api/upload/image`);
+    
+    const uploadResponse = await fetch(`${BACKEND_URL}/api/upload/image`, {
       method: 'POST',
       body: formData,
       headers: {
         'Accept': 'application/json',
         ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-        // NOTE: Do NOT set Content-Type for FormData - browser sets it automatically with boundary
       },
     });
     
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('[API] Upload error:', response.status, errorText);
-      throw new Error(`Upload failed: ${response.status} - ${errorText}`);
+    if (!uploadResponse.ok) {
+      const errorText = await uploadResponse.text();
+      console.error('[API] Upload error:', uploadResponse.status, errorText);
+      throw new Error(`Upload failed: ${uploadResponse.status} - ${errorText}`);
     }
     
-    const data = await response.json();
+    const data = await uploadResponse.json();
     console.log('[API] Upload success:', data);
     return data.url;
   };
@@ -200,25 +300,25 @@ export default function HomeScreen() {
     setIsAnalyzing(true);
 
     try {
-      console.log('[API] Uploading images...');
-      const [mainImageUrl, compareImage1Url, compareImage2Url] = await Promise.all([
-        uploadImage(mainImage.uri),
-        uploadImage(compareImage1.uri),
-        uploadImage(compareImage2.uri),
-      ]);
+      console.log('[API] Using cached image URLs for analysis...');
       
-      console.log('[API] All images uploaded successfully');
-      console.log('[API] Main:', mainImageUrl);
-      console.log('[API] Compare1:', compareImage1Url);
-      console.log('[API] Compare2:', compareImage2Url);
+      // Use already-uploaded URLs from face detection step, or upload if missing
+      const resolvedMainUrl = mainImageUrl || await uploadImage(mainImage.uri);
+      const resolvedCompare1Url = compareImage1Url || await uploadImage(compareImage1.uri);
+      const resolvedCompare2Url = compareImage2Url || await uploadImage(compareImage2.uri);
+      
+      console.log('[API] All images ready');
+      console.log('[API] Main:', resolvedMainUrl);
+      console.log('[API] Compare1:', resolvedCompare1Url);
+      console.log('[API] Compare2:', resolvedCompare2Url);
       
       console.log('[API] Requesting comparison with authenticated API...');
       const result = await authenticatedPost('/api/compare', {
-        mainImageUrl,
+        mainImageUrl: resolvedMainUrl,
         mainImageLabel: mainImage.label || 'Principale',
-        compareImage1Url,
+        compareImage1Url: resolvedCompare1Url,
         compareImage1Label: compareImage1.label || 'Foto 1',
-        compareImage2Url,
+        compareImage2Url: resolvedCompare2Url,
         compareImage2Label: compareImage2.label || 'Foto 2',
       });
       
@@ -279,8 +379,16 @@ export default function HomeScreen() {
                 style={[styles.imageCard, { backgroundColor: cardColor, borderColor: secondaryColor }]}
                 onPress={() => pickImage('main')}
                 activeOpacity={0.7}
+                disabled={detectingFaces}
               >
-                {mainImage ? (
+                {detectingFaces && detectingFacesFor === 'main' ? (
+                  <View style={styles.imagePlaceholder}>
+                    <ActivityIndicator size="large" color={secondaryColor} />
+                    <Text style={[styles.placeholderText, { color: secondaryColor, marginTop: 12 }]}>
+                      Rilevamento volti...
+                    </Text>
+                  </View>
+                ) : mainImage ? (
                   <Image source={{ uri: mainImage.uri }} style={styles.image} />
                 ) : (
                   <View style={styles.imagePlaceholder}>
@@ -319,8 +427,13 @@ export default function HomeScreen() {
                     style={[styles.compareCard, { backgroundColor: cardColor, borderColor: accentColor }]}
                     onPress={() => pickImage('compare1')}
                     activeOpacity={0.7}
+                    disabled={detectingFaces}
                   >
-                    {compareImage1 ? (
+                    {detectingFaces && detectingFacesFor === 'compare1' ? (
+                      <View style={styles.comparePlaceholder}>
+                        <ActivityIndicator size="small" color={accentColor} />
+                      </View>
+                    ) : compareImage1 ? (
                       <Image source={{ uri: compareImage1.uri }} style={styles.compareImage} />
                     ) : (
                       <View style={styles.comparePlaceholder}>
@@ -350,8 +463,13 @@ export default function HomeScreen() {
                     style={[styles.compareCard, { backgroundColor: cardColor, borderColor: purpleColor }]}
                     onPress={() => pickImage('compare2')}
                     activeOpacity={0.7}
+                    disabled={detectingFaces}
                   >
-                    {compareImage2 ? (
+                    {detectingFaces && detectingFacesFor === 'compare2' ? (
+                      <View style={styles.comparePlaceholder}>
+                        <ActivityIndicator size="small" color={purpleColor} />
+                      </View>
+                    ) : compareImage2 ? (
                       <Image source={{ uri: compareImage2.uri }} style={styles.compareImage} />
                     ) : (
                       <View style={styles.comparePlaceholder}>
@@ -429,6 +547,15 @@ export default function HomeScreen() {
 
             <View style={{ height: 120 }} />
           </ScrollView>
+
+          {/* Face Selector Modal */}
+          <FaceSelector
+            visible={faceDetectionModal.visible}
+            imageUri={faceDetectionModal.imageUri}
+            faces={faceDetectionModal.faces}
+            onSelectFace={handleFaceSelected}
+            onCancel={handleFaceCancelled}
+          />
 
           {/* Error Modal */}
           <Modal
