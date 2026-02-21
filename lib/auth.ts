@@ -2,16 +2,14 @@ import { createAuthClient } from "better-auth/react";
 import { expoClient } from "@better-auth/expo/client";
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
-import Constants from "expo-constants";
 
-// Resolve the app scheme from app.json to ensure deep links work correctly
-// app.json has scheme: "Chi ti somiglia?" - we need to use this exact value
-const _rawScheme = Constants.expoConfig?.scheme;
-const APP_SCHEME: string = _rawScheme
-  ? (Array.isArray(_rawScheme) ? _rawScheme[0] : _rawScheme)
-  : "chi-ti-somiglia";
+// The app scheme MUST be a valid URL scheme (no spaces, no special chars).
+// app.json has scheme: "Chi ti somiglia?" which is invalid for deep links.
+// We use a sanitized version: "chi-ti-somiglia" for native deep links.
+// The expoClient plugin will use this scheme for OAuth callbacks on native.
+const APP_SCHEME = "chi-ti-somiglia";
 
-console.log("[Auth] Resolved APP_SCHEME:", APP_SCHEME);
+console.log("[Auth] Using APP_SCHEME:", APP_SCHEME);
 
 const API_URL = "https://3az2ndteth9e6e3ftqke6u4yj9646gyu.app.specular.dev";
 
@@ -26,6 +24,8 @@ const storage = Platform.OS === "web"
     }
   : SecureStore;
 
+// Create auth client with expoClient plugin for native deep link support
+// On web, the expoClient plugin is included but the OAuth flow uses full-page redirect
 export const authClient = createAuthClient({
   baseURL: API_URL,
   plugins: [
@@ -35,16 +35,24 @@ export const authClient = createAuthClient({
       storage,
     }),
   ],
-  // On web, use cookies (credentials: include) and fallback to bearer token
-  ...(Platform.OS === "web" && {
-    fetchOptions: {
-      credentials: "include",
+  // Include credentials for cookie-based session management
+  // On web, also send the bearer token in the Authorization header
+  // This ensures getSession() works even when cookies are blocked (cross-origin)
+  fetchOptions: {
+    credentials: "include" as RequestCredentials,
+    ...(Platform.OS === "web" && {
       auth: {
         type: "Bearer" as const,
-        token: () => localStorage.getItem(BEARER_TOKEN_KEY) || "",
+        token: () => {
+          try {
+            return localStorage.getItem(BEARER_TOKEN_KEY) || "";
+          } catch {
+            return "";
+          }
+        },
       },
-    },
-  }),
+    }),
+  },
 });
 
 export async function setBearerToken(token: string) {

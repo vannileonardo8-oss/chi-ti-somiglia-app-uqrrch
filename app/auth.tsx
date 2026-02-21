@@ -1,4 +1,7 @@
-import React, { useState } from "react";
+
+import { useRouter } from "expo-router";
+import { useAuth } from "@/contexts/AuthContext";
+import { colors } from "@/styles/commonStyles";
 import {
   View,
   Text,
@@ -6,56 +9,68 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Alert,
   Platform,
   KeyboardAvoidingView,
   ScrollView,
+  Modal,
 } from "react-native";
-import { useAuth } from "@/contexts/AuthContext";
-import { useRouter } from "expo-router";
+import React, { useState } from "react";
 
 type Mode = "signin" | "signup";
 
 export default function AuthScreen() {
+  const { signInWithEmail, signUpWithEmail, signInWithGoogle, signInWithApple } = useAuth();
   const router = useRouter();
-  const { signInWithEmail, signUpWithEmail, signInWithGoogle, signInWithApple, signInWithGitHub, loading: authLoading } =
-    useAuth();
-
   const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
+  const [errorModal, setErrorModal] = useState<{ visible: boolean; message: string }>({
+    visible: false,
+    message: "",
+  });
 
-  if (authLoading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#007AFF" />
-      </View>
-    );
-  }
+  const showError = (message: string) => {
+    console.log("[Auth] Showing error:", message);
+    setErrorModal({ visible: true, message });
+  };
+
+  const handleSkipLogin = () => {
+    console.log("[Auth] User skipped login, navigating to home");
+    router.replace("/(tabs)/(home)");
+  };
 
   const handleEmailAuth = async () => {
     if (!email || !password) {
-      Alert.alert("Errore", "Inserisci email e password");
+      showError("Inserisci email e password");
+      return;
+    }
+
+    if (mode === "signup" && !name) {
+      showError("Inserisci il tuo nome");
       return;
     }
 
     setLoading(true);
+    console.log(`[Auth] Starting ${mode} with email:`, email);
+
     try {
       if (mode === "signin") {
         await signInWithEmail(email, password);
-        router.replace("/(tabs)/(home)");
       } else {
         await signUpWithEmail(email, password, name);
-        Alert.alert(
-          "Success",
-          "Account created! Please check your email to verify your account."
-        );
-        router.replace("/(tabs)/(home)");
       }
+      console.log("[Auth] Email auth successful, navigating to home");
+      router.replace("/(tabs)/(home)");
     } catch (error: any) {
-      Alert.alert("Error", error.message || "Autenticazione fallita");
+      console.error("[Auth] Email auth error:", error);
+      showError(
+        error?.message ||
+          (mode === "signin"
+            ? "Accesso fallito. Verifica le credenziali."
+            : "Registrazione fallita. Riprova.")
+      );
     } finally {
       setLoading(false);
     }
@@ -63,95 +78,117 @@ export default function AuthScreen() {
 
   const handleSocialAuth = async (provider: "google" | "apple" | "github") => {
     setLoading(true);
+    console.log(`[Auth] Starting ${provider} OAuth`);
+
     try {
       if (provider === "google") {
         await signInWithGoogle();
       } else if (provider === "apple") {
         await signInWithApple();
-      } else if (provider === "github") {
-        await signInWithGitHub();
       }
-      router.replace("/(tabs)/(home)");
+      
+      console.log(`[Auth] ${provider} OAuth initiated`);
+      
+      if (Platform.OS !== "web") {
+        router.replace("/(tabs)/(home)");
+      }
     } catch (error: any) {
-      Alert.alert("Error", error.message || "Authentication failed");
-    } finally {
+      console.error(`[Auth] ${provider} OAuth error:`, error);
+      
+      const providerName = provider === "google" ? "Google" : provider === "apple" ? "Apple" : provider;
+      let errorMessage = `Accesso con ${providerName} fallito.`;
+      
+      if (error?.message) {
+        if (error.message.includes("popup")) {
+          errorMessage = "Abilita i popup nel browser e riprova.";
+        } else if (error.message.includes("cancelled") || error.message.includes("annullato")) {
+          errorMessage = "Accesso annullato.";
+        } else if (error.message.includes("timeout")) {
+          errorMessage = "Timeout. Riprova.";
+        } else if (error.message.includes("403") || error.message.includes("Forbidden")) {
+          errorMessage = `${providerName} OAuth non è configurato sul server. Usa email e password per accedere.`;
+        } else if (error.message.includes("non è configurato")) {
+          errorMessage = error.message;
+        } else {
+          errorMessage += ` ${error.message}`;
+        }
+      }
+      
+      showError(errorMessage);
       setLoading(false);
     }
   };
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
+      style={styles.container}
     >
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.content}>
-          <Text style={styles.title}>
-            {mode === "signin" ? "Accedi" : "Registrati"}
+          <Text style={styles.title}>Chi ti somiglia?</Text>
+          <Text style={styles.subtitle}>
+            {mode === "signin" ? "Accedi al tuo account" : "Crea un nuovo account"}
           </Text>
 
           {mode === "signup" && (
             <TextInput
               style={styles.input}
-              placeholder="Nome (opzionale)"
+              placeholder="Nome"
+              placeholderTextColor="#93C5FD"
               value={name}
               onChangeText={setName}
               autoCapitalize="words"
+              editable={!loading}
             />
           )}
 
           <TextInput
             style={styles.input}
             placeholder="Email"
+            placeholderTextColor="#93C5FD"
             value={email}
             onChangeText={setEmail}
             keyboardType="email-address"
             autoCapitalize="none"
-            autoCorrect={false}
+            editable={!loading}
           />
 
           <TextInput
             style={styles.input}
             placeholder="Password"
+            placeholderTextColor="#93C5FD"
             value={password}
             onChangeText={setPassword}
             secureTextEntry
-            autoCapitalize="none"
+            editable={!loading}
           />
 
           <TouchableOpacity
-            style={[styles.primaryButton, loading && styles.buttonDisabled]}
+            style={[styles.button, loading && styles.buttonDisabled]}
             onPress={handleEmailAuth}
             disabled={loading}
           >
             {loading ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.primaryButtonText}>
-                {mode === "signin" ? "Sign In" : "Sign Up"}
+              <Text style={styles.buttonText}>
+                {mode === "signin" ? "Accedi" : "Registrati"}
               </Text>
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.switchModeButton}
-            onPress={() => setMode(mode === "signin" ? "signup" : "signin")}
-          >
-            <Text style={styles.switchModeText}>
-              {mode === "signin"
-                ? "Non hai un account? Sign Up"
-                : "Hai già un account? Sign In"}
-            </Text>
-          </TouchableOpacity>
-
           <View style={styles.divider}>
             <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>oppure continua con</Text>
+            <Text style={styles.dividerText}>oppure</Text>
             <View style={styles.dividerLine} />
           </View>
 
           <TouchableOpacity
-            style={styles.socialButton}
+            style={[styles.socialButton, styles.googleButton, loading && styles.buttonDisabled]}
             onPress={() => handleSocialAuth("google")}
             disabled={loading}
           >
@@ -160,7 +197,7 @@ export default function AuthScreen() {
 
           {Platform.OS === "ios" && (
             <TouchableOpacity
-              style={[styles.socialButton, styles.appleButton]}
+              style={[styles.socialButton, styles.appleButton, loading && styles.buttonDisabled]}
               onPress={() => handleSocialAuth("apple")}
               disabled={loading}
             >
@@ -169,8 +206,50 @@ export default function AuthScreen() {
               </Text>
             </TouchableOpacity>
           )}
+
+          <TouchableOpacity
+            style={styles.switchButton}
+            onPress={() => setMode(mode === "signin" ? "signup" : "signin")}
+            disabled={loading}
+          >
+            <Text style={styles.switchButtonText}>
+              {mode === "signin"
+                ? "Non hai un account? Registrati"
+                : "Hai già un account? Accedi"}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Skip Login Button */}
+          <TouchableOpacity
+            style={styles.skipButton}
+            onPress={handleSkipLogin}
+            disabled={loading}
+          >
+            <Text style={styles.skipButtonText}>SALTA IL LOGIN</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* Error Modal */}
+      <Modal
+        visible={errorModal.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setErrorModal({ visible: false, message: "" })}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Errore</Text>
+            <Text style={styles.modalMessage}>{errorModal.message}</Text>
+            <TouchableOpacity
+              style={styles.modalButton}
+              onPress={() => setErrorModal({ visible: false, message: "" })}
+            >
+              <Text style={styles.modalButtonText}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -178,62 +257,55 @@ export default function AuthScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fff",
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#fff",
+    backgroundColor: colors.background,
   },
   scrollContent: {
     flexGrow: 1,
+    justifyContent: "center",
+    padding: 20,
   },
   content: {
-    flex: 1,
-    padding: 24,
-    justifyContent: "center",
+    width: "100%",
+    maxWidth: 400,
+    alignSelf: "center",
   },
   title: {
     fontSize: 32,
     fontWeight: "bold",
+    color: colors.text,
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  subtitle: {
+    fontSize: 16,
+    color: colors.textSecondary,
     marginBottom: 32,
     textAlign: "center",
-    color: "#000",
   },
   input: {
-    height: 50,
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    marginBottom: 16,
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
     fontSize: 16,
-    backgroundColor: "#fff",
+    color: colors.text,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  primaryButton: {
-    height: 50,
-    backgroundColor: "#007AFF",
-    borderRadius: 8,
-    justifyContent: "center",
+  button: {
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    padding: 16,
     alignItems: "center",
     marginTop: 8,
   },
-  primaryButtonText: {
+  buttonDisabled: {
+    opacity: 0.5,
+  },
+  buttonText: {
     color: "#fff",
     fontSize: 16,
     fontWeight: "600",
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  switchModeButton: {
-    marginTop: 16,
-    alignItems: "center",
-  },
-  switchModeText: {
-    color: "#007AFF",
-    fontSize: 14,
   },
   divider: {
     flexDirection: "row",
@@ -243,33 +315,99 @@ const styles = StyleSheet.create({
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: "#ddd",
+    backgroundColor: colors.border,
   },
   dividerText: {
-    marginHorizontal: 12,
-    color: "#666",
+    color: colors.textSecondary,
+    paddingHorizontal: 16,
     fontSize: 14,
   },
   socialButton: {
-    height: 50,
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 8,
-    justifyContent: "center",
+    borderRadius: 12,
+    padding: 16,
     alignItems: "center",
     marginBottom: 12,
-    backgroundColor: "#fff",
+    borderWidth: 1,
   },
-  socialButtonText: {
-    fontSize: 16,
-    color: "#000",
-    fontWeight: "500",
+  googleButton: {
+    backgroundColor: "#fff",
+    borderColor: "#ddd",
   },
   appleButton: {
     backgroundColor: "#000",
-    borderColor: "#000",
+    borderColor: "#fff",
+  },
+  socialButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#000",
   },
   appleButtonText: {
     color: "#fff",
+  },
+  switchButton: {
+    marginTop: 24,
+    alignItems: "center",
+  },
+  switchButtonText: {
+    color: colors.primary,
+    fontSize: 14,
+  },
+  skipButton: {
+    marginTop: 32,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    alignItems: "center",
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: colors.secondary,
+    backgroundColor: "transparent",
+  },
+  skipButtonText: {
+    color: colors.secondary,
+    fontSize: 18,
+    fontWeight: "bold",
+    letterSpacing: 1,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    padding: 24,
+    width: "100%",
+    maxWidth: 400,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: colors.text,
+    marginBottom: 12,
+  },
+  modalMessage: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    textAlign: "center",
+    marginBottom: 24,
+    lineHeight: 22,
+  },
+  modalButton: {
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 32,
+  },
+  modalButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
   },
 });
