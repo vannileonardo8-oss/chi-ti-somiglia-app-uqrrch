@@ -4,30 +4,63 @@ import { View, Text, ActivityIndicator, StyleSheet } from "react-native";
 import { Platform } from "react-native";
 import { useRouter } from "expo-router";
 import { authClient, setBearerToken } from "@/lib/auth";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function AuthCallbackScreen() {
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
   const [message, setMessage] = useState("Elaborazione autenticazione...");
   const router = useRouter();
+  const { fetchUser } = useAuth();
 
   useEffect(() => {
-    if (Platform.OS !== "web") {
-      // On native, this screen is reached via deep link after OAuth
-      // The expoClient plugin should have already processed the callback
-      // Just wait a moment and redirect to home
-      console.log("[AuthCallback Native] Processing OAuth callback...");
-      setStatus("success");
-      setMessage("Autenticazione riuscita!");
-      
-      setTimeout(() => {
-        console.log("[AuthCallback Native] Redirecting to home...");
-        router.replace("/(tabs)/(home)");
-      }, 1000);
-      return;
-    }
-
     const handleCallback = async () => {
       try {
+        if (Platform.OS !== "web") {
+          // On native, this screen is reached via deep link after OAuth
+          console.log("[AuthCallback Native] Processing OAuth callback...");
+          console.log("[AuthCallback Native] Waiting for session to be established...");
+          
+          // Wait a bit longer for the OAuth flow to complete
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+          
+          // Try to fetch the session
+          console.log("[AuthCallback Native] Fetching session...");
+          const session = await authClient.getSession();
+          console.log("[AuthCallback Native] Session:", JSON.stringify(session));
+          
+          if (session?.data?.user) {
+            console.log("[AuthCallback Native] User found:", session.data.user.email);
+            
+            // Store token if available
+            if (session.data.session?.token) {
+              await setBearerToken(session.data.session.token);
+              console.log("[AuthCallback Native] Token stored");
+            }
+            
+            // Trigger a user fetch in AuthContext to update global state
+            await fetchUser();
+            
+            setStatus("success");
+            setMessage("Autenticazione riuscita!");
+            
+            // Redirect to home
+            setTimeout(() => {
+              console.log("[AuthCallback Native] Redirecting to home...");
+              router.replace("/(tabs)/(home)");
+            }, 800);
+          } else {
+            console.error("[AuthCallback Native] No user in session");
+            setStatus("error");
+            setMessage("Autenticazione fallita - riprova");
+            
+            setTimeout(() => {
+              router.replace("/auth");
+            }, 2000);
+          }
+          return;
+        }
+
+        // Web flow
         console.log("[AuthCallback] Processing OAuth callback...");
         console.log("[AuthCallback] Current URL:", window.location.href);
 
@@ -46,8 +79,6 @@ export default function AuthCallbackScreen() {
 
         if (urlToken) {
           // Token was passed directly in the URL
-          // Store it IMMEDIATELY (synchronously via localStorage) before any async operations
-          // This ensures fetchUser() in AuthProvider can use it
           console.log("[AuthCallback] Token found in URL, storing immediately...");
           try {
             localStorage.setItem("chi-ti-somiglia_bearer_token", urlToken);
@@ -135,7 +166,7 @@ export default function AuthCallbackScreen() {
         setStatus("error");
         setMessage(err?.message || "Autenticazione fallita");
 
-        if (window.opener) {
+        if (Platform.OS === "web" && window.opener) {
           window.opener.postMessage(
             { type: "oauth-error", error: err?.message || "Authentication failed" },
             window.location.origin

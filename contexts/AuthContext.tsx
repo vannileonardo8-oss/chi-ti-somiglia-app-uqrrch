@@ -118,11 +118,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Parse the URL to check if it's an auth callback
       const url = event.url;
       if (url.includes("auth-callback")) {
-        console.log("[AuthContext] Auth callback detected, refreshing user session...");
-        // Give the auth client time to process the callback
-        setTimeout(() => {
-          fetchUser();
-        }, 1000);
+        console.log("[AuthContext] Auth callback detected, will be handled by auth-callback screen");
+        // The auth-callback screen will handle the session fetch
+        // We don't need to do anything here
       }
     });
 
@@ -199,17 +197,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       if (Platform.OS === "web") {
         // On web: use full-page redirect OAuth flow via authClient.
-        // The authClient makes a POST to the backend, gets a redirect URL,
-        // and navigates the page to the OAuth provider.
         const callbackURL = `${window.location.origin}/auth-callback`;
 
         console.log(`[AuthContext] Using full-page redirect OAuth for ${provider}`);
         console.log(`[AuthContext] Callback URL:`, callbackURL);
 
-        // authClient.signIn.social on web will:
-        // 1. POST to /api/auth/sign-in/social
-        // 2. Get back a redirect URL to the OAuth provider
-        // 3. Navigate the current page to that URL
         const result = await authClient.signIn.social({
           provider,
           callbackURL,
@@ -239,12 +231,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        // If no URL and no error, authClient may have already redirected
         console.log(`[AuthContext] signIn.social completed (redirect may have happened)`);
       } else {
         console.log(`[AuthContext] Using native OAuth flow for ${provider}`);
         // Native: Use the expoClient plugin which handles OAuth via expo-web-browser
-        // The callbackURL uses the app scheme for deep linking back to the app
         const callbackURL = Linking.createURL("auth-callback");
         console.log(`[AuthContext] Callback URL:`, callbackURL);
         
@@ -269,15 +259,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           throw new Error(errMsg);
         }
         
-        // The OAuth flow will return via deep link
-        // The URL event listener above will trigger fetchUser()
+        // The OAuth flow will return via deep link to auth-callback screen
+        // The auth-callback screen will handle the session and redirect
         console.log(`[AuthContext] OAuth redirect initiated for ${provider}, waiting for callback...`);
         
-        // Wait a bit for the callback to complete
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        // Fetch user to check if auth succeeded
-        await fetchUser();
+        // Don't fetch user here - let the auth-callback screen handle it
+        // This prevents race conditions
       }
     } catch (error) {
       console.error(`[AuthContext] ${provider} sign in failed:`, error);
