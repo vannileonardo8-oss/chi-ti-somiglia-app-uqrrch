@@ -70,12 +70,12 @@ export default function ResultsScreen() {
   const successColor = colors.success;
 
   const loadResult = useCallback(async () => {
-    console.log('[API] Loading comparison result for id:', id);
+    console.log('[ResultScreen] Loading comparison result for id:', id);
     setLoading(true);
     
     try {
       const data = await apiGet<ComparisonResult>(`/api/comparisons/${id}`);
-      console.log('[API] Result loaded:', data);
+      console.log('[ResultScreen] Result loaded successfully');
       
       if (data.winnerSimilarity === undefined && data.reasons && data.reasons.length > 0) {
         const winnerReasons = data.reasons.filter(r => r.similarity !== undefined);
@@ -101,13 +101,12 @@ export default function ResultsScreen() {
       
       setResult(data);
       
-      // Give ViewShot time to render before marking as ready
       setTimeout(() => {
         setViewShotReady(true);
-        console.log('[ViewShot] Ready for capture');
-      }, 1000);
+        console.log('[ResultScreen] ViewShot ready for capture');
+      }, 1500);
     } catch (error) {
-      console.error('[API] Error loading result:', error);
+      console.error('[ResultScreen] Error loading result:', error);
       setErrorModal({
         visible: true,
         message: 'Impossibile caricare i risultati. Riprova più tardi.',
@@ -122,69 +121,94 @@ export default function ResultsScreen() {
   }, [loadResult]);
 
   const handleShare = async () => {
-    console.log('User tapped share button');
+    console.log('[Share] User tapped share button');
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     
     if (!result) {
-      console.log('[Share] No result data available');
+      console.log('[Share] ERROR: No result data available');
       showError('Nessun risultato da condividere.');
       return;
     }
 
     if (!viewShotReady) {
-      console.log('[Share] ViewShot not ready yet');
+      console.log('[Share] ERROR: ViewShot not ready yet');
       showError('Attendi il caricamento completo prima di condividere.');
-      return;
-    }
-
-    if (!viewShotRef.current) {
-      console.log('[Share] ViewShot ref is null');
-      showError('Errore tecnico. Riprova tra qualche secondo.');
       return;
     }
 
     setSharing(true);
 
     try {
-      console.log('[Share] Capturing screenshot...');
-      const uri = await viewShotRef.current.capture();
-      console.log('[Share] Screenshot captured successfully:', uri);
-
-      const isAvailable = await Sharing.isAvailableAsync();
-      console.log('[Share] Sharing available:', isAvailable);
+      const winnerLabel = result.winner === 1 ? result.compareImage1Label : result.compareImage2Label;
+      const mainLabel = result.mainImageLabel || 'la foto principale';
+      const winnerSimilarityText = `${result.winnerSimilarity || 75}%`;
       
-      if (isAvailable) {
-        console.log('[Share] Using Sharing.shareAsync...');
-        await Sharing.shareAsync(uri, {
-          mimeType: 'image/png',
-          dialogTitle: 'Condividi il risultato',
-        });
-        console.log('[Share] Share completed');
+      const shareText = `🎉 Risultato "Chi ti somiglia?"\n\n${winnerLabel} assomiglia di più a ${mainLabel} con ${winnerSimilarityText} di somiglianza!\n\n${result.summary}\n\nScopri anche tu chi ti somiglia di più! 🔍✨`;
+      
+      console.log('[Share] Attempting to capture screenshot...');
+      
+      if (viewShotRef.current) {
+        try {
+          const uri = await viewShotRef.current.capture();
+          console.log('[Share] Screenshot captured successfully:', uri);
+
+          const isAvailable = await Sharing.isAvailableAsync();
+          console.log('[Share] Sharing.isAvailableAsync:', isAvailable);
+          
+          if (isAvailable) {
+            console.log('[Share] Using Sharing.shareAsync with image...');
+            await Sharing.shareAsync(uri, {
+              mimeType: 'image/png',
+              dialogTitle: 'Condividi il risultato',
+            });
+            console.log('[Share] Image share completed successfully');
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          } else {
+            console.log('[Share] Sharing not available, falling back to Share.share with text');
+            await Share.share({
+              message: shareText,
+            });
+            console.log('[Share] Text share completed successfully');
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          }
+        } catch (captureError: any) {
+          console.error('[Share] Screenshot capture failed:', captureError);
+          console.error('[Share] Capture error details:', {
+            message: captureError?.message,
+            name: captureError?.name,
+            stack: captureError?.stack,
+          });
+          
+          console.log('[Share] Falling back to text-only share');
+          await Share.share({
+            message: shareText,
+          });
+          console.log('[Share] Fallback text share completed');
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
       } else {
-        console.log('[Share] Sharing not available, using Share.share fallback');
-        const winnerLabel = result.winner === 1 ? result.compareImage1Label : result.compareImage2Label;
-        const mainLabel = result.mainImageLabel || 'la foto principale';
-        const winnerSimilarityText = `${result.winnerSimilarity || 75}%`;
-        
-        const shareText = `🎉 Risultato "Chi ti somiglia?"\n\n${winnerLabel} assomiglia di più a ${mainLabel} con ${winnerSimilarityText} di somiglianza!\n\n${result.summary}`;
-        
+        console.log('[Share] ViewShot ref is null, using text-only share');
         await Share.share({
           message: shareText,
         });
-        console.log('[Share] Text share completed');
+        console.log('[Share] Text-only share completed');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
-      
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error: any) {
-      console.error('[Share] Error sharing:', error);
+      console.error('[Share] Share operation failed:', error);
       console.error('[Share] Error details:', {
         message: error?.message,
         name: error?.name,
+        code: error?.code,
         stack: error?.stack,
       });
       
-      if (error.message !== 'User did not share' && !error.message?.includes('cancel')) {
-        showError('Impossibile condividere il risultato. Riprova più tardi.');
+      if (error.message !== 'User did not share' && 
+          !error.message?.includes('cancel') && 
+          !error.message?.includes('dismissed')) {
+        showError('Errore durante la condivisione. Riprova più tardi.');
+      } else {
+        console.log('[Share] User cancelled share dialog');
       }
     } finally {
       setSharing(false);
@@ -192,6 +216,7 @@ export default function ResultsScreen() {
   };
 
   const showError = (message: string) => {
+    console.log('[ResultScreen] Showing error modal:', message);
     setErrorModal({
       visible: true,
       message,
@@ -199,7 +224,7 @@ export default function ResultsScreen() {
   };
 
   const handleNewComparison = () => {
-    console.log('User tapped new comparison button');
+    console.log('[ResultScreen] User tapped new comparison button');
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     router.push('/(tabs)/(home)');
   };
@@ -289,11 +314,14 @@ export default function ResultsScreen() {
         >
           <ViewShot 
             ref={viewShotRef} 
-            options={{ format: 'png', quality: 1.0 }}
+            options={{ 
+              format: 'png', 
+              quality: 0.9,
+              result: 'tmpfile',
+            }}
             style={{ backgroundColor: bgColor }}
           >
             <View style={[styles.shareableContent, { backgroundColor: bgColor }]}>
-              {/* App Branding */}
               <View style={styles.brandingHeader}>
                 <Text style={[styles.appName, { color: secondaryColor }]}>Chi ti somiglia?</Text>
                 <Text style={[styles.appTagline, { color: textSecondaryColor }]}>
@@ -301,7 +329,6 @@ export default function ResultsScreen() {
                 </Text>
               </View>
 
-              {/* Winner Announcement */}
               <View style={styles.winnerSection}>
                 <View style={styles.crownContainer}>
                   <Text style={styles.crownEmoji}>👑</Text>
@@ -314,9 +341,7 @@ export default function ResultsScreen() {
                 </Text>
               </View>
 
-              {/* Comparison Cards */}
               <View style={styles.comparisonSection}>
-                {/* Winner Card */}
                 <View style={[styles.comparisonCard, { backgroundColor: cardColor }]}>
                   <View style={styles.cardHeader}>
                     <Text style={styles.cardEmoji}>🏆</Text>
@@ -339,7 +364,6 @@ export default function ResultsScreen() {
                   </Text>
                 </View>
 
-                {/* VS Divider */}
                 <View style={styles.vsDivider}>
                   <Text style={[styles.vsText, { color: textColor }]}>VS</Text>
                   <Text style={[styles.differenceText, { color: textSecondaryColor }]}>
@@ -347,7 +371,6 @@ export default function ResultsScreen() {
                   </Text>
                 </View>
 
-                {/* Loser Card */}
                 <View style={[styles.comparisonCard, { backgroundColor: cardColor, opacity: 0.8 }]}>
                   <View style={styles.cardHeader}>
                     <Text style={styles.cardEmoji}>🥈</Text>
@@ -363,7 +386,6 @@ export default function ResultsScreen() {
                 </View>
               </View>
 
-              {/* Main Image Reference */}
               <View style={[styles.mainImageCard, { backgroundColor: cardColor }]}>
                 <Text style={[styles.mainImageTitle, { color: textColor }]}>
                   📸 Foto di Riferimento
@@ -376,13 +398,11 @@ export default function ResultsScreen() {
                 </Text>
               </View>
 
-              {/* Summary */}
               <View style={[styles.summaryCard, { backgroundColor: cardColor }]}>
                 <Text style={[styles.summaryTitle, { color: textColor }]}>📊 Riepilogo</Text>
                 <Text style={[styles.summaryText, { color: textSecondaryColor }]}>{result.summary}</Text>
               </View>
 
-              {/* App Footer */}
               <View style={styles.brandingFooter}>
                 <Text style={[styles.footerText, { color: textSecondaryColor }]}>
                   Creato con Chi ti somiglia? 🎉
@@ -391,7 +411,6 @@ export default function ResultsScreen() {
             </View>
           </ViewShot>
 
-          {/* Detailed Reasons (not in screenshot) */}
           <View style={styles.reasonsSection}>
             <Text style={[styles.reasonsTitle, { color: textColor }]}>🔍 Analisi Dettagliata</Text>
             
@@ -446,7 +465,6 @@ export default function ResultsScreen() {
             })}
           </View>
 
-          {/* Action Buttons */}
           <View style={styles.actionsSection}>
             <TouchableOpacity
               style={styles.shareButton}
@@ -464,14 +482,14 @@ export default function ResultsScreen() {
                   <>
                     <ActivityIndicator color={colors.background} size="small" />
                     <Text style={[styles.shareButtonText, { color: colors.background }]}>
-                      Preparazione...
+                      Condivisione...
                     </Text>
                   </>
                 ) : !viewShotReady ? (
                   <>
                     <ActivityIndicator color={colors.background} size="small" />
                     <Text style={[styles.shareButtonText, { color: colors.background }]}>
-                      Caricamento...
+                      Preparazione...
                     </Text>
                   </>
                 ) : (
@@ -510,7 +528,6 @@ export default function ResultsScreen() {
           <View style={{ height: 100 }} />
         </ScrollView>
 
-        {/* Error Modal */}
         <Modal
           visible={errorModal.visible}
           transparent
