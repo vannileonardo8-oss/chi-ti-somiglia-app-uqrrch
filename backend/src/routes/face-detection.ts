@@ -2,19 +2,50 @@ import type { FastifyRequest, FastifyReply } from 'fastify';
 import { gateway } from '@specific-dev/framework';
 import { generateObject } from 'ai';
 import { z } from 'zod';
+import sharp from 'sharp';
 import type { App } from '../index.js';
 
-// Helper function to fetch image and convert to base64
-async function fetchImageAsBase64(imageUrl: string): Promise<string> {
-  const response = await fetch(imageUrl);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch image: ${response.statusText}`);
+// Helper function to fetch, compress, and convert image to base64
+async function fetchImageAsBase64(imageUrl: string, app: any): Promise<string> {
+  try {
+    const response = await fetch(imageUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch image: ${response.statusText}`);
+    }
+
+    const buffer = await response.arrayBuffer();
+    const imageBuffer = Buffer.from(buffer);
+
+    app.logger.info(
+      { originalSize: imageBuffer.length },
+      'Image fetched, starting compression'
+    );
+
+    // Compress and resize image using sharp
+    // Resize to max 512px width, 60% quality JPEG to reduce payload
+    const compressedBuffer = await sharp(imageBuffer)
+      .resize(512, 512, {
+        fit: 'inside', // Keep aspect ratio, fit inside 512x512
+        withoutEnlargement: true, // Don't upscale small images
+      })
+      .jpeg({ quality: 60, progressive: true }) // 60% quality JPEG for smaller size
+      .toBuffer();
+
+    const base64 = compressedBuffer.toString('base64');
+
+    app.logger.info(
+      {
+        originalSize: imageBuffer.length,
+        compressedSize: compressedBuffer.length,
+        reduction: Math.round((1 - compressedBuffer.length / imageBuffer.length) * 100),
+      },
+      'Image compressed successfully'
+    );
+
+    return base64;
+  } catch (error) {
+    throw new Error(`Failed to process image from ${imageUrl}: ${error instanceof Error ? error.message : String(error)}`);
   }
-
-  const buffer = await response.arrayBuffer();
-  const base64 = Buffer.from(buffer).toString('base64');
-
-  return base64;
 }
 
 export function registerFaceDetectionRoutes(app: App) {
@@ -38,7 +69,7 @@ export function registerFaceDetectionRoutes(app: App) {
       try {
         // Fetch and convert image to base64
         app.logger.info({}, 'Fetching image for face detection');
-        const imageBase64 = await fetchImageAsBase64(imageUrl);
+        const imageBase64 = await fetchImageAsBase64(imageUrl, app);
 
         app.logger.info({}, 'Image fetched, analyzing with Gemini');
 
