@@ -34,6 +34,24 @@ interface ComparisonHistoryItem {
   createdAt: string;
 }
 
+// Helper to resolve image sources (handles both local and remote URLs)
+function resolveImageSource(url: string) {
+  if (!url) {
+    console.warn('[resolveImageSource] Empty URL provided');
+    return { uri: '' };
+  }
+  
+  // Handle local file URIs (file://, content://, etc.)
+  if (url.startsWith('file://') || url.startsWith('content://') || url.startsWith('data:image')) {
+    console.log('[resolveImageSource] Local image:', url.substring(0, 50));
+    return { uri: url };
+  }
+  
+  // Handle remote URLs
+  console.log('[resolveImageSource] Remote image:', url.substring(0, 50));
+  return { uri: url };
+}
+
 export default function HistoryScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -62,15 +80,26 @@ export default function HistoryScreen() {
   }, []);
 
   const loadHistory = async () => {
-    console.log('[API] Loading comparison history');
+    console.log('[History] Loading comparison history');
     setLoading(true);
     
     try {
       const data = await authenticatedGet<ComparisonHistoryItem[]>('/api/comparisons');
-      console.log('[API] History loaded:', data);
+      console.log('[History] History loaded successfully, count:', data.length);
+      
+      // Log image URLs for debugging
+      data.forEach((item, index) => {
+        console.log(`[History] Item ${index + 1}:`, {
+          id: item.id,
+          mainImageUrl: item.mainImageUrl?.substring(0, 50),
+          compareImage1Url: item.compareImage1Url?.substring(0, 50),
+          compareImage2Url: item.compareImage2Url?.substring(0, 50),
+        });
+      });
+      
       setHistory(data);
     } catch (error) {
-      console.error('[API] Error loading history:', error);
+      console.error('[History] Error loading history:', error);
       setErrorModal({
         visible: true,
         message: 'Impossibile caricare la cronologia. Riprova più tardi.',
@@ -82,17 +111,17 @@ export default function HistoryScreen() {
   };
 
   const handleItemPress = (id: string) => {
-    console.log('User tapped history item:', id);
+    console.log('[History] User tapped history item:', id);
     router.push(`/results/${id}`);
   };
 
   const handleBackPress = () => {
-    console.log('User tapped back button from history');
+    console.log('[History] User tapped back button');
     router.push('/(tabs)/(home)');
   };
 
   const confirmDelete = (id: string) => {
-    console.log('User swiped to delete item:', id);
+    console.log('[History] User swiped to delete item:', id);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setDeleteModal({ visible: true, id });
   };
@@ -101,18 +130,18 @@ export default function HistoryScreen() {
     const itemId = deleteModal.id;
     if (!itemId) return;
 
-    console.log('[API] Deleting comparison:', itemId);
+    console.log('[History] Deleting comparison:', itemId);
     setDeleteModal({ visible: false, id: null });
 
     try {
       await authenticatedDelete(`/api/comparisons/${itemId}`);
-      console.log('[API] Comparison deleted successfully');
+      console.log('[History] Comparison deleted successfully');
       
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       
       setHistory(prevHistory => prevHistory.filter(item => item.id !== itemId));
     } catch (error) {
-      console.error('[API] Error deleting comparison:', error);
+      console.error('[History] Error deleting comparison:', error);
       setErrorModal({
         visible: true,
         message: 'Impossibile eliminare il confronto. Riprova più tardi.',
@@ -175,12 +204,33 @@ export default function HistoryScreen() {
           activeOpacity={0.7}
         >
           <View style={styles.imagesRow}>
-            <Image source={{ uri: item.mainImageUrl }} style={styles.thumbnail} />
+            <Image 
+              source={resolveImageSource(item.mainImageUrl)} 
+              style={styles.thumbnail}
+              resizeMode="cover"
+              onError={(e) => {
+                console.error('[History] Main image load error:', e.nativeEvent.error, item.mainImageUrl);
+              }}
+            />
             <View style={styles.vsContainer}>
               <Text style={[styles.vsText, { color: textSecondaryColor }]}>VS</Text>
             </View>
-            <Image source={{ uri: item.compareImage1Url }} style={styles.thumbnail} />
-            <Image source={{ uri: item.compareImage2Url }} style={styles.thumbnail} />
+            <Image 
+              source={resolveImageSource(item.compareImage1Url)} 
+              style={styles.thumbnail}
+              resizeMode="cover"
+              onError={(e) => {
+                console.error('[History] Compare1 image load error:', e.nativeEvent.error, item.compareImage1Url);
+              }}
+            />
+            <Image 
+              source={resolveImageSource(item.compareImage2Url)} 
+              style={styles.thumbnail}
+              resizeMode="cover"
+              onError={(e) => {
+                console.error('[History] Compare2 image load error:', e.nativeEvent.error, item.compareImage2Url);
+              }}
+            />
           </View>
           
           <View style={styles.infoContainer}>
@@ -390,6 +440,7 @@ const styles = StyleSheet.create({
     width: 60,
     height: 80,
     borderRadius: 8,
+    backgroundColor: '#f0f0f0',
   },
   vsContainer: {
     paddingHorizontal: 8,

@@ -47,6 +47,24 @@ interface ComparisonResult {
   createdAt: string;
 }
 
+// Helper to resolve image sources (handles both local and remote URLs)
+function resolveImageSource(url: string) {
+  if (!url) {
+    console.warn('[resolveImageSource] Empty URL provided');
+    return { uri: '' };
+  }
+  
+  // Handle local file URIs (file://, content://, etc.)
+  if (url.startsWith('file://') || url.startsWith('content://') || url.startsWith('data:image')) {
+    console.log('[resolveImageSource] Local image:', url.substring(0, 50));
+    return { uri: url };
+  }
+  
+  // Handle remote URLs
+  console.log('[resolveImageSource] Remote image:', url.substring(0, 50));
+  return { uri: url };
+}
+
 export default function ResultsScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
@@ -70,12 +88,17 @@ export default function ResultsScreen() {
   const successColor = colors.success;
 
   const loadResult = useCallback(async () => {
-    console.log('[ResultScreen] Loading comparison result for id:', id);
+    console.log('[Results] Loading comparison result for id:', id);
     setLoading(true);
     
     try {
       const data = await apiGet<ComparisonResult>(`/api/comparisons/${id}`);
-      console.log('[ResultScreen] Result loaded successfully');
+      console.log('[Results] Result loaded successfully');
+      console.log('[Results] Image URLs:', {
+        mainImageUrl: data.mainImageUrl?.substring(0, 50),
+        compareImage1Url: data.compareImage1Url?.substring(0, 50),
+        compareImage2Url: data.compareImage2Url?.substring(0, 50),
+      });
       
       if (data.winnerSimilarity === undefined && data.reasons && data.reasons.length > 0) {
         const winnerReasons = data.reasons.filter(r => r.similarity !== undefined);
@@ -103,10 +126,10 @@ export default function ResultsScreen() {
       
       setTimeout(() => {
         setViewShotReady(true);
-        console.log('[ResultScreen] ViewShot ready for capture');
+        console.log('[Results] ViewShot ready for capture');
       }, 1500);
     } catch (error) {
-      console.error('[ResultScreen] Error loading result:', error);
+      console.error('[Results] Error loading result:', error);
       setErrorModal({
         visible: true,
         message: 'Impossibile caricare i risultati. Riprova più tardi.',
@@ -216,7 +239,7 @@ export default function ResultsScreen() {
   };
 
   const showError = (message: string) => {
-    console.log('[ResultScreen] Showing error modal:', message);
+    console.log('[Results] Showing error modal:', message);
     setErrorModal({
       visible: true,
       message,
@@ -224,7 +247,7 @@ export default function ResultsScreen() {
   };
 
   const handleNewComparison = () => {
-    console.log('[ResultScreen] User tapped new comparison button');
+    console.log('[Results] User tapped new comparison button');
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     router.push('/(tabs)/(home)');
   };
@@ -348,7 +371,14 @@ export default function ResultsScreen() {
                     <Text style={[styles.cardTitle, { color: secondaryColor }]}>Vincitore</Text>
                   </View>
                   <View style={styles.imageContainer}>
-                    <Image source={{ uri: winnerImage }} style={styles.comparisonImage} />
+                    <Image 
+                      source={resolveImageSource(winnerImage)} 
+                      style={styles.comparisonImage}
+                      resizeMode="cover"
+                      onError={(e) => {
+                        console.error('[Results] Winner image load error:', e.nativeEvent.error, winnerImage);
+                      }}
+                    />
                     <View style={[styles.winnerBadge, { backgroundColor: successColor }]}>
                       <IconSymbol
                         ios_icon_name="checkmark"
@@ -377,7 +407,14 @@ export default function ResultsScreen() {
                     <Text style={[styles.cardTitle, { color: textSecondaryColor }]}>Secondo</Text>
                   </View>
                   <View style={styles.imageContainer}>
-                    <Image source={{ uri: loserImage }} style={styles.comparisonImage} />
+                    <Image 
+                      source={resolveImageSource(loserImage)} 
+                      style={styles.comparisonImage}
+                      resizeMode="cover"
+                      onError={(e) => {
+                        console.error('[Results] Loser image load error:', e.nativeEvent.error, loserImage);
+                      }}
+                    />
                   </View>
                   <Text style={[styles.cardLabel, { color: textColor }]}>{loserLabel}</Text>
                   <Text style={[styles.cardPercentage, { color: textSecondaryColor }]}>
@@ -391,7 +428,14 @@ export default function ResultsScreen() {
                   📸 Foto di Riferimento
                 </Text>
                 <View style={styles.mainImageContainer}>
-                  <Image source={{ uri: result.mainImageUrl }} style={styles.mainImage} />
+                  <Image 
+                    source={resolveImageSource(result.mainImageUrl)} 
+                    style={styles.mainImage}
+                    resizeMode="cover"
+                    onError={(e) => {
+                      console.error('[Results] Main image load error:', e.nativeEvent.error, result.mainImageUrl);
+                    }}
+                  />
                 </View>
                 <Text style={[styles.mainImageLabel, { color: textSecondaryColor }]}>
                   {result.mainImageLabel}
@@ -661,6 +705,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: 'hidden',
     marginBottom: 12,
+    backgroundColor: '#f0f0f0',
   },
   comparisonImage: {
     width: '100%',
@@ -714,6 +759,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: 'hidden',
     marginBottom: 8,
+    backgroundColor: '#f0f0f0',
   },
   mainImage: {
     width: '100%',
