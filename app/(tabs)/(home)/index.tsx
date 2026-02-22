@@ -332,7 +332,13 @@ export default function HomeScreen() {
       router.push(`/results/${result.comparisonId}`);
     } catch (error: any) {
       console.error('Error analyzing images:', error);
-      const errorMessage = error?.message || 'Si è verificato un errore durante l\'analisi. Riprova.';
+      let errorMessage = error?.message || 'Si è verificato un errore durante l\'analisi. Riprova.';
+      
+      // Check for 413 Payload Too Large error
+      if (error?.message?.includes('413') || error?.message?.toLowerCase().includes('payload too large')) {
+        errorMessage = 'Le immagini sono troppo grandi. Prova a caricare foto più piccole o di qualità inferiore.';
+      }
+      
       showError(errorMessage);
     } finally {
       setIsAnalyzing(false);
