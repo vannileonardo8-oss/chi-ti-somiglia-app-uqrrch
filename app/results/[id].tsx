@@ -55,6 +55,7 @@ export default function ResultsScreen() {
   const [result, setResult] = useState<ComparisonResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [sharing, setSharing] = useState(false);
+  const [viewShotReady, setViewShotReady] = useState(false);
   const [errorModal, setErrorModal] = useState<{ visible: boolean; message: string }>({
     visible: false,
     message: '',
@@ -99,6 +100,12 @@ export default function ResultsScreen() {
       }
       
       setResult(data);
+      
+      // Give ViewShot time to render before marking as ready
+      setTimeout(() => {
+        setViewShotReady(true);
+        console.log('[ViewShot] Ready for capture');
+      }, 1000);
     } catch (error) {
       console.error('[API] Error loading result:', error);
       setErrorModal({
@@ -118,7 +125,21 @@ export default function ResultsScreen() {
     console.log('User tapped share button');
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     
-    if (!result || !viewShotRef.current) {
+    if (!result) {
+      console.log('[Share] No result data available');
+      showError('Nessun risultato da condividere.');
+      return;
+    }
+
+    if (!viewShotReady) {
+      console.log('[Share] ViewShot not ready yet');
+      showError('Attendi il caricamento completo prima di condividere.');
+      return;
+    }
+
+    if (!viewShotRef.current) {
+      console.log('[Share] ViewShot ref is null');
+      showError('Errore tecnico. Riprova tra qualche secondo.');
       return;
     }
 
@@ -127,17 +148,20 @@ export default function ResultsScreen() {
     try {
       console.log('[Share] Capturing screenshot...');
       const uri = await viewShotRef.current.capture();
-      console.log('[Share] Screenshot captured:', uri);
+      console.log('[Share] Screenshot captured successfully:', uri);
 
       const isAvailable = await Sharing.isAvailableAsync();
+      console.log('[Share] Sharing available:', isAvailable);
       
       if (isAvailable) {
-        console.log('[Share] Sharing screenshot...');
+        console.log('[Share] Using Sharing.shareAsync...');
         await Sharing.shareAsync(uri, {
           mimeType: 'image/png',
           dialogTitle: 'Condividi il risultato',
         });
+        console.log('[Share] Share completed');
       } else {
+        console.log('[Share] Sharing not available, using Share.share fallback');
         const winnerLabel = result.winner === 1 ? result.compareImage1Label : result.compareImage2Label;
         const mainLabel = result.mainImageLabel || 'la foto principale';
         const winnerSimilarityText = `${result.winnerSimilarity || 75}%`;
@@ -147,20 +171,31 @@ export default function ResultsScreen() {
         await Share.share({
           message: shareText,
         });
+        console.log('[Share] Text share completed');
       }
       
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error: any) {
       console.error('[Share] Error sharing:', error);
-      if (error.message !== 'User did not share') {
-        setErrorModal({
-          visible: true,
-          message: 'Impossibile condividere il risultato. Riprova più tardi.',
-        });
+      console.error('[Share] Error details:', {
+        message: error?.message,
+        name: error?.name,
+        stack: error?.stack,
+      });
+      
+      if (error.message !== 'User did not share' && !error.message?.includes('cancel')) {
+        showError('Impossibile condividere il risultato. Riprova più tardi.');
       }
     } finally {
       setSharing(false);
     }
+  };
+
+  const showError = (message: string) => {
+    setErrorModal({
+      visible: true,
+      message,
+    });
   };
 
   const handleNewComparison = () => {
@@ -252,7 +287,11 @@ export default function ResultsScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          <ViewShot ref={viewShotRef} options={{ format: 'png', quality: 1.0 }}>
+          <ViewShot 
+            ref={viewShotRef} 
+            options={{ format: 'png', quality: 1.0 }}
+            style={{ backgroundColor: bgColor }}
+          >
             <View style={[styles.shareableContent, { backgroundColor: bgColor }]}>
               {/* App Branding */}
               <View style={styles.brandingHeader}>
@@ -412,11 +451,11 @@ export default function ResultsScreen() {
             <TouchableOpacity
               style={styles.shareButton}
               onPress={handleShare}
-              disabled={sharing}
+              disabled={sharing || !viewShotReady}
               activeOpacity={0.8}
             >
               <LinearGradient
-                colors={[secondaryColor, colors.accent]}
+                colors={viewShotReady ? [secondaryColor, colors.accent] : ['#666666', '#444444']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
                 style={styles.shareGradient}
@@ -426,6 +465,13 @@ export default function ResultsScreen() {
                     <ActivityIndicator color={colors.background} size="small" />
                     <Text style={[styles.shareButtonText, { color: colors.background }]}>
                       Preparazione...
+                    </Text>
+                  </>
+                ) : !viewShotReady ? (
+                  <>
+                    <ActivityIndicator color={colors.background} size="small" />
+                    <Text style={[styles.shareButtonText, { color: colors.background }]}>
+                      Caricamento...
                     </Text>
                   </>
                 ) : (
