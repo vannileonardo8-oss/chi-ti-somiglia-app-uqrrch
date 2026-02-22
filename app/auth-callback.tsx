@@ -25,6 +25,7 @@ export default function AuthCallbackScreen() {
           // The backend sends: ?cookie=better-auth.session_token%3D<token>&better_auth_token=<token>
           const betterAuthToken = params.better_auth_token as string;
           const cookieParam = params.cookie as string;
+          const tokenParam = params.token as string;
           
           let extractedToken: string | null = null;
           
@@ -34,11 +35,17 @@ export default function AuthCallbackScreen() {
             extractedToken = betterAuthToken;
           }
           
+          // Try token parameter
+          if (!extractedToken && tokenParam) {
+            console.log("[AuthCallback Native] Found token in URL");
+            extractedToken = tokenParam;
+          }
+          
           // Try to extract token from cookie parameter
           if (!extractedToken && cookieParam) {
             console.log("[AuthCallback Native] Parsing cookie parameter:", cookieParam);
             // cookie format: "better-auth.session_token=<token>"
-            const match = cookieParam.match(/better-auth\.session_token[=%]([^&]+)/);
+            const match = cookieParam.match(/better-auth\.session_token[=%]([^&;]+)/);
             if (match && match[1]) {
               extractedToken = decodeURIComponent(match[1]);
               console.log("[AuthCallback Native] Extracted token from cookie parameter");
@@ -46,30 +53,25 @@ export default function AuthCallbackScreen() {
           }
           
           if (extractedToken) {
-            console.log("[AuthCallback Native] Token found, storing...");
+            console.log("[AuthCallback Native] Token found, storing and fetching user...");
             await setBearerToken(extractedToken);
             
-            // Wait a moment for the token to be stored
-            await new Promise((resolve) => setTimeout(resolve, 500));
-            
-            // Fetch user session with the new token
+            // Fetch user session immediately with the new token
             console.log("[AuthCallback Native] Fetching user session with token...");
             await fetchUser();
             
             setStatus("success");
             setMessage("Autenticazione riuscita!");
             
-            // Redirect to home
-            setTimeout(() => {
-              console.log("[AuthCallback Native] Redirecting to home...");
-              router.replace("/(tabs)/(home)");
-            }, 800);
+            // Redirect to home immediately
+            console.log("[AuthCallback Native] Redirecting to home...");
+            router.replace("/(tabs)/(home)");
             return;
           }
           
           // Fallback: try to fetch session from Better Auth (cookie-based)
           console.log("[AuthCallback Native] No token in URL, trying session fetch...");
-          await new Promise((resolve) => setTimeout(resolve, 1500));
+          await new Promise((resolve) => setTimeout(resolve, 1000));
           
           let session = null;
           let attempts = 0;
@@ -111,10 +113,8 @@ export default function AuthCallbackScreen() {
             setMessage("Autenticazione riuscita!");
             
             // Redirect to home
-            setTimeout(() => {
-              console.log("[AuthCallback Native] Redirecting to home...");
-              router.replace("/(tabs)/(home)");
-            }, 800);
+            console.log("[AuthCallback Native] Redirecting to home...");
+            router.replace("/(tabs)/(home)");
           } else {
             console.error("[AuthCallback Native] No user in session after all attempts");
             setStatus("error");
@@ -154,6 +154,10 @@ export default function AuthCallbackScreen() {
             console.warn("[AuthCallback] Failed to store token synchronously:", e);
           }
           await setBearerToken(urlToken);
+          
+          // Fetch user to update AuthContext
+          await fetchUser();
+          
           setStatus("success");
           setMessage("Autenticazione riuscita! Reindirizzamento...");
 
@@ -184,6 +188,10 @@ export default function AuthCallbackScreen() {
           const token = session.data.session.token;
           console.log("[AuthCallback] Session token found, storing...");
           await setBearerToken(token);
+          
+          // Fetch user to update AuthContext
+          await fetchUser();
+          
           setStatus("success");
           setMessage("Autenticazione riuscita! Reindirizzamento...");
 
@@ -201,6 +209,10 @@ export default function AuthCallbackScreen() {
         } else if (session?.data?.user) {
           // Cookie-based auth - user is authenticated but no explicit token
           console.log("[AuthCallback] User found in session (cookie-based auth)");
+          
+          // Fetch user to update AuthContext
+          await fetchUser();
+          
           setStatus("success");
           setMessage("Autenticazione riuscita! Reindirizzamento...");
 
