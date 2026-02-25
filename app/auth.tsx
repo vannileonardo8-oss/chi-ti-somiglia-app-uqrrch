@@ -97,22 +97,24 @@ export default function AuthScreen() {
     } catch (error: any) {
       console.error(`[Auth] ${provider} OAuth error:`, error);
       
-      const providerName = provider === "google" ? "Google" : provider === "apple" ? "Apple" : provider;
+      const providerName = provider === "google" ? "Google" : provider === "apple" ? "Apple" : "GitHub";
       let errorMessage = `Accesso con ${providerName} fallito.`;
       
       if (error?.message) {
-        if (error.message.includes("popup")) {
+        // Check if it's a provider not configured error
+        if (
+          error.message.includes("non è ancora disponibile") ||
+          error.message.includes("not enabled") ||
+          error.message.includes("not configured") ||
+          error.message.includes("Unsupported provider")
+        ) {
+          errorMessage = error.message;
+        } else if (error.message.includes("popup")) {
           errorMessage = "Abilita i popup nel browser e riprova.";
         } else if (error.message.includes("cancelled") || error.message.includes("annullato")) {
           errorMessage = "Accesso annullato.";
         } else if (error.message.includes("timeout")) {
           errorMessage = "Timeout. Riprova.";
-        } else if (error.message.includes("404") || error.message.includes("does not exist") || error.message.includes("Not found")) {
-          errorMessage = `${providerName} OAuth non è ancora configurato sul server. Le credenziali OAuth devono essere aggiunte. Per ora, usa email e password per accedere.`;
-        } else if (error.message.includes("403") || error.message.includes("Forbidden")) {
-          errorMessage = `${providerName} OAuth non è configurato sul server. Usa email e password per accedere.`;
-        } else if (error.message.includes("non è configurato")) {
-          errorMessage = error.message;
         } else {
           errorMessage += ` ${error.message}`;
         }
@@ -222,6 +224,13 @@ export default function AuthScreen() {
                 : "Hai già un account? Accedi"}
             </Text>
           </TouchableOpacity>
+
+          <View style={styles.infoBox}>
+            <Text style={styles.infoText}>
+              ℹ️ L&apos;accesso con Google e Apple richiede una configurazione aggiuntiva. 
+              Per ora, utilizza l&apos;accesso con email e password.
+            </Text>
+          </View>
         </View>
       </ScrollView>
 
@@ -234,7 +243,7 @@ export default function AuthScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Errore</Text>
+            <Text style={styles.modalTitle}>Attenzione</Text>
             <Text style={styles.modalMessage}>{errorModal.message}</Text>
             <TouchableOpacity
               style={styles.modalButton}
@@ -347,6 +356,20 @@ const styles = StyleSheet.create({
   switchButtonText: {
     color: "#007AFF",
     fontSize: 14,
+  },
+  infoBox: {
+    marginTop: 24,
+    padding: 16,
+    backgroundColor: "#f0f8ff",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#b3d9ff",
+  },
+  infoText: {
+    fontSize: 14,
+    color: "#0066cc",
+    lineHeight: 20,
+    textAlign: "center",
   },
   modalOverlay: {
     flex: 1,

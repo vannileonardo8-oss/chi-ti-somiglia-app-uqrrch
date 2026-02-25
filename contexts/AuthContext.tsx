@@ -151,7 +151,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(true);
       console.log("[AuthContext] Fetching user session...");
       
-      // Try Better Auth first
+      // Try Supabase first (primary auth for this app)
+      const { data: { session: supabaseSession } } = await supabase.auth.getSession();
+      
+      if (supabaseSession?.user) {
+        console.log("[AuthContext] User found via Supabase:", supabaseSession.user.email);
+        setUser({
+          id: supabaseSession.user.id,
+          email: supabaseSession.user.email || '',
+          name: supabaseSession.user.user_metadata?.name || supabaseSession.user.user_metadata?.full_name,
+          image: supabaseSession.user.user_metadata?.avatar_url,
+        });
+        return;
+      }
+      
+      // Fallback to Better Auth
       const session = await authClient.getSession();
       console.log("[AuthContext] Better Auth session response:", session);
       
@@ -163,12 +177,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (session.data.session?.token) {
           await setBearerToken(session.data.session.token);
           console.log("[AuthContext] Bearer token synced");
-        }
-        
-        // Check if Supabase session exists
-        const { data: supabaseSession } = await supabase.auth.getSession();
-        if (!supabaseSession.session) {
-          console.log("[AuthContext] No Supabase session - user needs to sign in with Supabase for storage access");
         }
       } else {
         console.log("[AuthContext] No user session found");
@@ -255,7 +263,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error("[AuthContext] Email sign up failed:", error);
       throw error;
-    }
+      }
   };
 
   const signInWithSocial = async (provider: "google" | "apple" | "github") => {
@@ -276,10 +284,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (error) {
         console.error(`[AuthContext] Supabase OAuth error:`, error);
         
-        if (error.message.includes("not enabled") || error.message.includes("not configured")) {
+        // Check for provider not enabled error
+        if (
+          error.message.includes("not enabled") || 
+          error.message.includes("not configured") ||
+          error.message.includes("Unsupported provider") ||
+          error.message.includes("provider is not enabled")
+        ) {
+          const providerName = provider === "google" ? "Google" : provider === "apple" ? "Apple" : "GitHub";
           throw new Error(
-            `Accesso con ${provider === "google" ? "Google" : provider === "apple" ? "Apple" : provider} non disponibile. ` +
-            `Le credenziali OAuth non sono ancora configurate sul server. Usa email e password per accedere.`
+            `L'accesso con ${providerName} non è ancora disponibile.\n\n` +
+            `Per utilizzare questa funzione, il provider OAuth deve essere configurato nel pannello Supabase.\n\n` +
+            `Per ora, utilizza l'accesso con email e password.`
           );
         }
         
