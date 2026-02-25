@@ -22,7 +22,6 @@ import {
 } from 'react-native';
 import { BACKEND_URL, authenticatedPost, getBearerToken } from '@/utils/api';
 import { uploadImageToSupabase, saveComparisonToSupabase } from '@/lib/supabase';
-import { useAuth } from '@/contexts/AuthContext';
 
 interface ImageData {
   uri: string;
