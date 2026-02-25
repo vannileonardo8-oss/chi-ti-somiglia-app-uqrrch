@@ -8,19 +8,19 @@ import {
   Image,
   TouchableOpacity,
   ActivityIndicator,
-  Share,
   Modal,
   Platform,
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { IconSymbol } from '@/components/IconSymbol';
-import { colors } from '@/styles/commonStyles';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as Haptics from 'expo-haptics';
-import { apiGet } from '@/utils/api';
-import ViewShot from 'react-native-view-shot';
+import { colors } from '@/styles/commonStyles';
+import { IconSymbol } from '@/components/IconSymbol';
 import * as Sharing from 'expo-sharing';
+import * as Haptics from 'expo-haptics';
+import ViewShot from 'react-native-view-shot';
+import { useAuth } from '@/contexts/AuthContext';
+import { fetchComparisonById } from '@/lib/supabase';
 
 interface Reason {
   feature: string;
@@ -32,886 +32,599 @@ interface Reason {
 
 interface ComparisonResult {
   id: string;
-  mainImageUrl: string;
-  mainImageLabel: string;
-  compareImage1Url: string;
-  compareImage1Label: string;
-  compareImage2Url: string;
-  compareImage2Label: string;
-  winner: 1 | 2;
-  winnerSimilarity?: number;
-  loserSimilarity?: number;
-  comparisonDifference?: number;
-  summary: string;
-  reasons: Reason[];
-  createdAt: string;
+  main_image_url: string;
+  main_image_label: string;
+  compare_image_1_url: string;
+  compare_image_1_label: string;
+  compare_image_2_url: string;
+  compare_image_2_label: string;
+  winner_image: 1 | 2;
+  analysis_result: {
+    winnerSimilarity: number;
+    loserSimilarity: number;
+    reasons: Reason[];
+    summary: string;
+  };
+  created_at: string;
 }
 
-// Helper to resolve image sources (handles both local and remote URLs)
 function resolveImageSource(url: string) {
   if (!url) {
-    console.warn('[resolveImageSource] Empty URL provided');
+    console.warn('[Results] Empty image URL provided');
     return { uri: '' };
   }
-  
-  // Handle local file URIs (file://, content://, etc.)
-  if (url.startsWith('file://') || url.startsWith('content://') || url.startsWith('data:image')) {
-    console.log('[resolveImageSource] Local image:', url.substring(0, 50));
+  if (typeof url === 'string') {
     return { uri: url };
   }
-  
-  // Handle remote URLs
-  console.log('[resolveImageSource] Remote image:', url.substring(0, 50));
-  return { uri: url };
+  return url;
 }
 
 export default function ResultsScreen() {
   const { id } = useLocalSearchParams();
-  const router = useRouter();
-  const viewShotRef = useRef<ViewShot>(null);
-
   const [result, setResult] = useState<ComparisonResult | null>(null);
   const [loading, setLoading] = useState(true);
-  const [sharing, setSharing] = useState(false);
+  const [errorModalVisible, setErrorModalVisible] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
   const [viewShotReady, setViewShotReady] = useState(false);
-  const [errorModal, setErrorModal] = useState<{ visible: boolean; message: string }>({
-    visible: false,
-    message: '',
-  });
-
-  const bgColor = colors.background;
-  const textColor = colors.text;
-  const textSecondaryColor = colors.textSecondary;
-  const cardColor = colors.card;
-  const primaryColor = colors.primary;
-  const secondaryColor = colors.secondary;
-  const successColor = colors.success;
+  const router = useRouter();
+  const viewShotRef = useRef<ViewShot>(null);
+  const { user } = useAuth();
 
   const loadResult = useCallback(async () => {
-    console.log('[Results] Loading comparison result for id:', id);
-    setLoading(true);
-    
+    if (!id || !user) {
+      console.error('[Results] Missing ID or user');
+      setLoading(false);
+      return;
+    }
+
     try {
-      const data = await apiGet<ComparisonResult>(`/api/comparisons/${id}`);
-      console.log('[Results] Result loaded successfully');
-      console.log('[Results] Image URLs:', {
-        mainImageUrl: data.mainImageUrl?.substring(0, 50),
-        compareImage1Url: data.compareImage1Url?.substring(0, 50),
-        compareImage2Url: data.compareImage2Url?.substring(0, 50),
-      });
+      setLoading(true);
+      console.log('[Results] Loading comparison:', id);
       
-      if (data.winnerSimilarity === undefined && data.reasons && data.reasons.length > 0) {
-        const winnerReasons = data.reasons.filter(r => r.similarity !== undefined);
-        if (winnerReasons.length > 0) {
-          const avgSimilarity = winnerReasons.reduce((sum, r) => sum + (r.similarity || 0), 0) / winnerReasons.length;
-          data.winnerSimilarity = Math.round(avgSimilarity);
-          data.loserSimilarity = Math.round(avgSimilarity * 0.65);
-          data.comparisonDifference = data.winnerSimilarity - data.loserSimilarity;
-          
-          data.reasons = data.reasons.map(r => ({
-            ...r,
-            winnerValue: r.similarity || r.winnerValue || 0,
-            loserValue: r.loserValue || Math.round((r.similarity || 0) * 0.65),
-          }));
-        }
-      }
+      const data = await fetchComparisonById(id as string, user.id);
       
-      if (data.winnerSimilarity === undefined) data.winnerSimilarity = 75;
-      if (data.loserSimilarity === undefined) data.loserSimilarity = 50;
-      if (data.comparisonDifference === undefined) {
-        data.comparisonDifference = data.winnerSimilarity - data.loserSimilarity;
-      }
-      
+      console.log('[Results] Loaded comparison data');
       setResult(data);
       
       setTimeout(() => {
         setViewShotReady(true);
-        console.log('[Results] ViewShot ready for capture');
-      }, 1500);
+      }, 500);
     } catch (error) {
-      console.error('[Results] Error loading result:', error);
-      setErrorModal({
-        visible: true,
-        message: 'Impossibile caricare i risultati. Riprova più tardi.',
-      });
+      console.error('[Results] Failed to load result:', error);
+      showError('Impossibile caricare il risultato');
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, user]);
 
   useEffect(() => {
     loadResult();
   }, [loadResult]);
 
   const handleShare = async () => {
-    console.log('[Share] User tapped share button');
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    
-    if (!result) {
-      console.log('[Share] ERROR: No result data available');
-      showError('Nessun risultato da condividere.');
+    if (!user) {
+      showError('Devi effettuare l&apos;accesso per condividere i risultati');
       return;
     }
 
-    if (!viewShotReady) {
-      console.log('[Share] ERROR: ViewShot not ready yet');
-      showError('Attendi il caricamento completo prima di condividere.');
+    if (!viewShotReady || !result || !viewShotRef.current) {
+      console.warn('[Results] ViewShot not ready for capture');
+      showError('Attendi il caricamento completo prima di condividere');
       return;
     }
-
-    setSharing(true);
 
     try {
-      const winnerLabel = result.winner === 1 ? result.compareImage1Label : result.compareImage2Label;
-      const mainLabel = result.mainImageLabel || 'la foto principale';
-      const winnerSimilarityText = `${result.winnerSimilarity || 75}%`;
-      
-      const shareText = `🎉 Risultato "Chi ti somiglia?"\n\n${winnerLabel} assomiglia di più a ${mainLabel} con ${winnerSimilarityText} di somiglianza!\n\n${result.summary}\n\nScopri anche tu chi ti somiglia di più! 🔍✨`;
-      
-      console.log('[Share] Attempting to capture screenshot...');
-      
-      if (viewShotRef.current) {
-        try {
-          const uri = await viewShotRef.current.capture();
-          console.log('[Share] Screenshot captured successfully:', uri);
+      console.log('[Results] Capturing screenshot for sharing...');
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-          const isAvailable = await Sharing.isAvailableAsync();
-          console.log('[Share] Sharing.isAvailableAsync:', isAvailable);
-          
-          if (isAvailable) {
-            console.log('[Share] Using Sharing.shareAsync with image...');
-            await Sharing.shareAsync(uri, {
-              mimeType: 'image/png',
-              dialogTitle: 'Condividi il risultato',
-            });
-            console.log('[Share] Image share completed successfully');
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          } else {
-            console.log('[Share] Sharing not available, falling back to Share.share with text');
-            await Share.share({
-              message: shareText,
-            });
-            console.log('[Share] Text share completed successfully');
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          }
-        } catch (captureError: any) {
-          console.error('[Share] Screenshot capture failed:', captureError);
-          console.error('[Share] Capture error details:', {
-            message: captureError?.message,
-            name: captureError?.name,
-            stack: captureError?.stack,
-          });
-          
-          console.log('[Share] Falling back to text-only share');
-          await Share.share({
-            message: shareText,
-          });
-          console.log('[Share] Fallback text share completed');
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        }
-      } else {
-        console.log('[Share] ViewShot ref is null, using text-only share');
-        await Share.share({
-          message: shareText,
-        });
-        console.log('[Share] Text-only share completed');
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      const uri = await viewShotRef.current.capture();
+      console.log('[Results] Screenshot captured:', uri);
+
+      const isAvailable = await Sharing.isAvailableAsync();
+      if (!isAvailable) {
+        console.error('[Results] Sharing not available on this device');
+        showError('Condivisione non disponibile su questo dispositivo');
+        return;
       }
-    } catch (error: any) {
-      console.error('[Share] Share operation failed:', error);
-      console.error('[Share] Error details:', {
-        message: error?.message,
-        name: error?.name,
-        code: error?.code,
-        stack: error?.stack,
+
+      await Sharing.shareAsync(uri, {
+        mimeType: 'image/png',
+        dialogTitle: 'Condividi Risultato',
       });
-      
-      if (error.message !== 'User did not share' && 
-          !error.message?.includes('cancel') && 
-          !error.message?.includes('dismissed')) {
-        showError('Errore durante la condivisione. Riprova più tardi.');
-      } else {
-        console.log('[Share] User cancelled share dialog');
-      }
-    } finally {
-      setSharing(false);
+
+      console.log('[Results] Sharing completed');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      console.error('[Results] Failed to share:', error);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      showError('Impossibile condividere il risultato');
     }
   };
 
   const showError = (message: string) => {
-    console.log('[Results] Showing error modal:', message);
-    setErrorModal({
-      visible: true,
-      message,
-    });
+    setErrorMessage(message);
+    setErrorModalVisible(true);
   };
 
   const handleNewComparison = () => {
-    console.log('[Results] User tapped new comparison button');
+    console.log('[Results] Starting new comparison');
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     router.push('/(tabs)/(home)');
   };
 
   if (loading) {
     return (
-      <LinearGradient
-        colors={[colors.background, colors.backgroundDark]}
-        style={styles.gradientContainer}
-      >
-        <SafeAreaView style={styles.container} edges={['top']}>
-          <Stack.Screen
-            options={{
-              headerShown: true,
-              title: 'Risultati',
-              headerBackTitle: 'Indietro',
-              headerStyle: { backgroundColor: colors.background },
-              headerTintColor: colors.text,
-            }}
-          />
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={secondaryColor} />
-            <Text style={[styles.loadingText, { color: textSecondaryColor }]}>
-              Caricamento risultati...
-            </Text>
-          </View>
-        </SafeAreaView>
-      </LinearGradient>
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+        <Stack.Screen
+          options={{
+            title: 'Risultato',
+            headerShown: true,
+          }}
+        />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.loadingText, { color: colors.text }]}>
+            Caricamento risultato...
+          </Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
   if (!result) {
     return (
-      <LinearGradient
-        colors={[colors.background, colors.backgroundDark]}
-        style={styles.gradientContainer}
-      >
-        <SafeAreaView style={styles.container} edges={['top']}>
-          <Stack.Screen
-            options={{
-              headerShown: true,
-              title: 'Risultati',
-              headerBackTitle: 'Indietro',
-              headerStyle: { backgroundColor: colors.background },
-              headerTintColor: colors.text,
-            }}
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+        <Stack.Screen
+          options={{
+            title: 'Risultato',
+            headerShown: true,
+          }}
+        />
+        <View style={styles.errorContainer}>
+          <IconSymbol
+            ios_icon_name="exclamationmark.triangle.fill"
+            android_material_icon_name="error"
+            size={64}
+            color={colors.text}
           />
-          <View style={styles.loadingContainer}>
-            <Text style={[styles.errorText, { color: textColor }]}>
-              Impossibile caricare i risultati
-            </Text>
-          </View>
-        </SafeAreaView>
-      </LinearGradient>
+          <Text style={[styles.errorText, { color: colors.text }]}>
+            Risultato non trovato
+          </Text>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+            <Text style={styles.backButtonText}>Torna Indietro</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
     );
   }
 
-  const winnerImage = result.winner === 1 ? result.compareImage1Url : result.compareImage2Url;
-  const winnerLabel = result.winner === 1 ? result.compareImage1Label : result.compareImage2Label;
-  const loserImage = result.winner === 1 ? result.compareImage2Url : result.compareImage1Url;
-  const loserLabel = result.winner === 1 ? result.compareImage2Label : result.compareImage1Label;
+  const winnerUrl = result.winner_image === 1 ? result.compare_image_1_url : result.compare_image_2_url;
+  const winnerLabel = result.winner_image === 1 ? result.compare_image_1_label : result.compare_image_2_label;
+  const loserUrl = result.winner_image === 1 ? result.compare_image_2_url : result.compare_image_1_url;
+  const loserLabel = result.winner_image === 1 ? result.compare_image_2_label : result.compare_image_1_label;
 
-  const winnerSimilarityText = `${result.winnerSimilarity || 75}%`;
-  const loserSimilarityText = `${result.loserSimilarity || 50}%`;
-  const differenceText = `${result.comparisonDifference || 25}%`;
+  const winnerSimilarity = result.analysis_result?.winnerSimilarity || 0;
+  const loserSimilarity = result.analysis_result?.loserSimilarity || 0;
+  const reasons = result.analysis_result?.reasons || [];
+  const summary = result.analysis_result?.summary || '';
 
   return (
-    <LinearGradient
-      colors={[colors.background, colors.backgroundDark]}
-      style={styles.gradientContainer}
-    >
-      <SafeAreaView style={styles.container} edges={['top']}>
-        <Stack.Screen
-          options={{
-            headerShown: true,
-            title: 'Risultati',
-            headerBackTitle: 'Indietro',
-            headerStyle: { backgroundColor: colors.background },
-            headerTintColor: colors.text,
-          }}
-        />
-        
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+      <Stack.Screen
+        options={{
+          title: 'Risultato del Confronto',
+          headerShown: true,
+          headerRight: () => (
+            <TouchableOpacity onPress={handleShare} style={styles.shareButton}>
+              <IconSymbol
+                ios_icon_name="square.and.arrow.up"
+                android_material_icon_name="share"
+                size={24}
+                color={colors.text}
+              />
+            </TouchableOpacity>
+          ),
+        }}
+      />
+
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <ViewShot
+          ref={viewShotRef}
+          options={{ format: 'png', quality: 0.9 }}
+          style={{ backgroundColor: colors.background }}
         >
-          <ViewShot 
-            ref={viewShotRef} 
-            options={{ 
-              format: 'png', 
-              quality: 0.9,
-              result: 'tmpfile',
-            }}
-            style={{ backgroundColor: bgColor }}
+          <LinearGradient
+            colors={['#FF6B9D', '#C06C84', '#6C5B7B']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.headerGradient}
           >
-            <View style={[styles.shareableContent, { backgroundColor: bgColor }]}>
-              <View style={styles.brandingHeader}>
-                <Text style={[styles.appName, { color: secondaryColor }]}>Chi ti somiglia?</Text>
-                <Text style={[styles.appTagline, { color: textSecondaryColor }]}>
-                  Scopri chi ti assomiglia di più! ✨
+            <Text style={styles.headerTitle}>🏆 Vincitore!</Text>
+            <View style={styles.winnerContainer}>
+              <Image
+                source={resolveImageSource(winnerUrl)}
+                style={styles.winnerImage}
+                resizeMode="cover"
+                onError={(e) => {
+                  console.error('[Results] Failed to load winner image:', winnerUrl, e.nativeEvent.error);
+                }}
+              />
+              <View style={styles.crownBadge}>
+                <IconSymbol
+                  ios_icon_name="crown.fill"
+                  android_material_icon_name="star"
+                  size={32}
+                  color="#FFD700"
+                />
+              </View>
+            </View>
+            <Text style={styles.winnerLabel}>{winnerLabel || 'Vincitore'}</Text>
+            <Text style={styles.similarityText}>
+              Somiglianza: {winnerSimilarity.toFixed(1)}%
+            </Text>
+          </LinearGradient>
+
+          <View style={styles.comparisonSection}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>
+              Confronto con
+            </Text>
+            <View style={styles.mainImageContainer}>
+              <Image
+                source={resolveImageSource(result.main_image_url)}
+                style={styles.mainImage}
+                resizeMode="cover"
+                onError={(e) => {
+                  console.error('[Results] Failed to load main image:', result.main_image_url, e.nativeEvent.error);
+                }}
+              />
+              <Text style={[styles.mainImageLabel, { color: colors.text }]}>
+                {result.main_image_label || 'Principale'}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.loserSection}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>
+              Secondo Classificato
+            </Text>
+            <View style={styles.loserContainer}>
+              <Image
+                source={resolveImageSource(loserUrl)}
+                style={styles.loserImage}
+                resizeMode="cover"
+                onError={(e) => {
+                  console.error('[Results] Failed to load loser image:', loserUrl, e.nativeEvent.error);
+                }}
+              />
+              <View style={styles.loserInfo}>
+                <Text style={[styles.loserLabel, { color: colors.text }]}>
+                  {loserLabel || 'Secondo'}
                 </Text>
-              </View>
-
-              <View style={styles.winnerSection}>
-                <View style={styles.crownContainer}>
-                  <Text style={styles.crownEmoji}>👑</Text>
-                </View>
-                <Text style={[styles.winnerTitle, { color: textColor }]}>Il Vincitore è</Text>
-                <Text style={[styles.winnerName, { color: secondaryColor }]}>{winnerLabel}</Text>
-                <Text style={[styles.winnerSimilarity, { color: textColor }]}>{winnerSimilarityText}</Text>
-                <Text style={[styles.winnerSubtitle, { color: textSecondaryColor }]}>
-                  di somiglianza con {result.mainImageLabel}
-                </Text>
-              </View>
-
-              <View style={styles.comparisonSection}>
-                <View style={[styles.comparisonCard, { backgroundColor: cardColor }]}>
-                  <View style={styles.cardHeader}>
-                    <Text style={styles.cardEmoji}>🏆</Text>
-                    <Text style={[styles.cardTitle, { color: secondaryColor }]}>Vincitore</Text>
-                  </View>
-                  <View style={styles.imageContainer}>
-                    <Image 
-                      source={resolveImageSource(winnerImage)} 
-                      style={styles.comparisonImage}
-                      resizeMode="cover"
-                      onError={(e) => {
-                        console.error('[Results] Winner image load error:', e.nativeEvent.error, winnerImage);
-                      }}
-                    />
-                    <View style={[styles.winnerBadge, { backgroundColor: successColor }]}>
-                      <IconSymbol
-                        ios_icon_name="checkmark"
-                        android_material_icon_name="check"
-                        size={16}
-                        color="#FFFFFF"
-                      />
-                    </View>
-                  </View>
-                  <Text style={[styles.cardLabel, { color: textColor }]}>{winnerLabel}</Text>
-                  <Text style={[styles.cardPercentage, { color: secondaryColor }]}>
-                    {winnerSimilarityText}
-                  </Text>
-                </View>
-
-                <View style={styles.vsDivider}>
-                  <Text style={[styles.vsText, { color: textColor }]}>VS</Text>
-                  <Text style={[styles.differenceText, { color: textSecondaryColor }]}>
-                    Differenza: {differenceText}
-                  </Text>
-                </View>
-
-                <View style={[styles.comparisonCard, { backgroundColor: cardColor, opacity: 0.8 }]}>
-                  <View style={styles.cardHeader}>
-                    <Text style={styles.cardEmoji}>🥈</Text>
-                    <Text style={[styles.cardTitle, { color: textSecondaryColor }]}>Secondo</Text>
-                  </View>
-                  <View style={styles.imageContainer}>
-                    <Image 
-                      source={resolveImageSource(loserImage)} 
-                      style={styles.comparisonImage}
-                      resizeMode="cover"
-                      onError={(e) => {
-                        console.error('[Results] Loser image load error:', e.nativeEvent.error, loserImage);
-                      }}
-                    />
-                  </View>
-                  <Text style={[styles.cardLabel, { color: textColor }]}>{loserLabel}</Text>
-                  <Text style={[styles.cardPercentage, { color: textSecondaryColor }]}>
-                    {loserSimilarityText}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={[styles.mainImageCard, { backgroundColor: cardColor }]}>
-                <Text style={[styles.mainImageTitle, { color: textColor }]}>
-                  📸 Foto di Riferimento
-                </Text>
-                <View style={styles.mainImageContainer}>
-                  <Image 
-                    source={resolveImageSource(result.mainImageUrl)} 
-                    style={styles.mainImage}
-                    resizeMode="cover"
-                    onError={(e) => {
-                      console.error('[Results] Main image load error:', e.nativeEvent.error, result.mainImageUrl);
-                    }}
-                  />
-                </View>
-                <Text style={[styles.mainImageLabel, { color: textSecondaryColor }]}>
-                  {result.mainImageLabel}
-                </Text>
-              </View>
-
-              <View style={[styles.summaryCard, { backgroundColor: cardColor }]}>
-                <Text style={[styles.summaryTitle, { color: textColor }]}>📊 Riepilogo</Text>
-                <Text style={[styles.summaryText, { color: textSecondaryColor }]}>{result.summary}</Text>
-              </View>
-
-              <View style={styles.brandingFooter}>
-                <Text style={[styles.footerText, { color: textSecondaryColor }]}>
-                  Creato con Chi ti somiglia? 🎉
+                <Text style={[styles.loserSimilarity, { color: colors.text }]}>
+                  Somiglianza: {loserSimilarity.toFixed(1)}%
                 </Text>
               </View>
             </View>
-          </ViewShot>
+          </View>
 
-          <View style={styles.reasonsSection}>
-            <Text style={[styles.reasonsTitle, { color: textColor }]}>🔍 Analisi Dettagliata</Text>
-            
-            {result.reasons.map((reason, index) => {
-              const winnerValue = reason.winnerValue || reason.similarity || 75;
-              const loserValue = reason.loserValue || Math.round((reason.similarity || 75) * 0.65);
-              const winnerValueText = `${winnerValue}%`;
-              const loserValueText = `${loserValue}%`;
-              
-              return (
-                <View key={index} style={[styles.reasonCard, { backgroundColor: cardColor }]}>
-                  <Text style={[styles.reasonFeature, { color: secondaryColor }]}>
-                    {reason.feature}
-                  </Text>
-                  <Text style={[styles.reasonDescription, { color: textSecondaryColor }]}>
+          {summary && (
+            <View style={styles.summarySection}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>
+                Riepilogo
+              </Text>
+              <Text style={[styles.summaryText, { color: colors.text }]}>
+                {summary}
+              </Text>
+            </View>
+          )}
+
+          {reasons.length > 0 && (
+            <View style={styles.reasonsSection}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>
+                Motivazioni Dettagliate
+              </Text>
+              {reasons.map((reason, index) => (
+                <View key={index} style={styles.reasonCard}>
+                  <View style={styles.reasonHeader}>
+                    <IconSymbol
+                      ios_icon_name="checkmark.circle.fill"
+                      android_material_icon_name="check-circle"
+                      size={20}
+                      color={colors.primary}
+                    />
+                    <Text style={[styles.reasonFeature, { color: colors.text }]}>
+                      {reason.feature}
+                    </Text>
+                  </View>
+                  <Text style={[styles.reasonDescription, { color: colors.text }]}>
                     {reason.description}
                   </Text>
-                  
-                  <View style={styles.comparisonBars}>
-                    <View style={styles.barRow}>
-                      <Text style={[styles.barLabel, { color: textColor }]}>{winnerLabel}</Text>
-                      <View style={styles.barContainer}>
-                        <View
-                          style={[
-                            styles.barFill,
-                            { width: `${winnerValue}%`, backgroundColor: secondaryColor },
-                          ]}
-                        />
-                      </View>
-                      <Text style={[styles.barValue, { color: secondaryColor }]}>
-                        {winnerValueText}
-                      </Text>
-                    </View>
-                    
-                    <View style={styles.barRow}>
-                      <Text style={[styles.barLabel, { color: textColor }]}>{loserLabel}</Text>
-                      <View style={styles.barContainer}>
-                        <View
-                          style={[
-                            styles.barFill,
-                            { width: `${loserValue}%`, backgroundColor: textSecondaryColor },
-                          ]}
-                        />
-                      </View>
-                      <Text style={[styles.barValue, { color: textSecondaryColor }]}>
-                        {loserValueText}
-                      </Text>
-                    </View>
-                  </View>
+                  {reason.similarity !== undefined && (
+                    <Text style={[styles.reasonSimilarity, { color: colors.text }]}>
+                      Somiglianza: {reason.similarity.toFixed(1)}%
+                    </Text>
+                  )}
                 </View>
-              );
-            })}
-          </View>
-
-          <View style={styles.actionsSection}>
-            <TouchableOpacity
-              style={styles.shareButton}
-              onPress={handleShare}
-              disabled={sharing || !viewShotReady}
-              activeOpacity={0.8}
-            >
-              <LinearGradient
-                colors={viewShotReady ? [secondaryColor, colors.accent] : ['#666666', '#444444']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.shareGradient}
-              >
-                {sharing ? (
-                  <>
-                    <ActivityIndicator color={colors.background} size="small" />
-                    <Text style={[styles.shareButtonText, { color: colors.background }]}>
-                      Condivisione...
-                    </Text>
-                  </>
-                ) : !viewShotReady ? (
-                  <>
-                    <ActivityIndicator color={colors.background} size="small" />
-                    <Text style={[styles.shareButtonText, { color: colors.background }]}>
-                      Preparazione...
-                    </Text>
-                  </>
-                ) : (
-                  <>
-                    <IconSymbol
-                      ios_icon_name="square.and.arrow.up"
-                      android_material_icon_name="share"
-                      size={20}
-                      color={colors.background}
-                    />
-                    <Text style={[styles.shareButtonText, { color: colors.background }]}>
-                      Condividi Risultato
-                    </Text>
-                  </>
-                )}
-              </LinearGradient>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.newButton, { backgroundColor: cardColor }]}
-              onPress={handleNewComparison}
-              activeOpacity={0.8}
-            >
-              <IconSymbol
-                ios_icon_name="plus.circle.fill"
-                android_material_icon_name="add-circle"
-                size={20}
-                color={secondaryColor}
-              />
-              <Text style={[styles.newButtonText, { color: textColor }]}>
-                Nuovo Confronto
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={{ height: 100 }} />
-        </ScrollView>
-
-        <Modal
-          visible={errorModal.visible}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setErrorModal({ visible: false, message: '' })}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={[styles.modalContent, { backgroundColor: cardColor }]}>
-              <Text style={styles.modalEmoji}>⚠️</Text>
-              <Text style={[styles.modalTitle, { color: textColor }]}>Errore</Text>
-              <Text style={[styles.modalMessage, { color: textSecondaryColor }]}>
-                {errorModal.message}
-              </Text>
-              <TouchableOpacity
-                style={[styles.modalButton, { backgroundColor: secondaryColor }]}
-                onPress={() => {
-                  setErrorModal({ visible: false, message: '' });
-                  if (!result) {
-                    router.back();
-                  }
-                }}
-              >
-                <Text style={[styles.modalButtonText, { color: colors.background }]}>OK</Text>
-              </TouchableOpacity>
+              ))}
             </View>
+          )}
+        </ViewShot>
+
+        <TouchableOpacity
+          style={styles.newComparisonButton}
+          onPress={handleNewComparison}
+        >
+          <IconSymbol
+            ios_icon_name="plus.circle.fill"
+            android_material_icon_name="add-circle"
+            size={24}
+            color="#fff"
+          />
+          <Text style={styles.newComparisonButtonText}>
+            Nuovo Confronto
+          </Text>
+        </TouchableOpacity>
+      </ScrollView>
+
+      <Modal
+        visible={errorModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setErrorModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <IconSymbol
+              ios_icon_name="exclamationmark.triangle.fill"
+              android_material_icon_name="error"
+              size={48}
+              color="#ff3b30"
+            />
+            <Text style={styles.modalTitle}>Errore</Text>
+            <Text style={styles.modalMessage}>{errorMessage}</Text>
+            <TouchableOpacity
+              style={styles.modalButton}
+              onPress={() => setErrorModalVisible(false)}
+            >
+              <Text style={styles.modalButtonText}>OK</Text>
+            </TouchableOpacity>
           </View>
-        </Modal>
-      </SafeAreaView>
-    </LinearGradient>
+        </View>
+      </Modal>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  gradientContainer: {
-    flex: 1,
-  },
   container: {
     flex: 1,
   },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 20,
-  },
-  shareableContent: {
-    padding: 20,
-    borderRadius: 20,
-    marginBottom: 24,
-  },
-  brandingHeader: {
-    alignItems: 'center',
-    marginBottom: 24,
-    paddingBottom: 16,
-    borderBottomWidth: 2,
-    borderBottomColor: 'rgba(255, 215, 0, 0.3)',
-  },
-  appName: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  appTagline: {
-    fontSize: 14,
+  shareButton: {
+    padding: 8,
   },
   loadingContainer: {
     flex: 1,
-    alignItems: 'center',
     justifyContent: 'center',
+    alignItems: 'center',
   },
   loadingText: {
     marginTop: 16,
     fontSize: 16,
   },
-  errorText: {
-    fontSize: 16,
-  },
-  winnerSection: {
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
+    padding: 32,
+  },
+  errorText: {
+    fontSize: 20,
+    fontWeight: '600',
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  backButton: {
+    marginTop: 24,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+  },
+  backButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 32,
+  },
+  headerGradient: {
+    padding: 32,
+    alignItems: 'center',
+  },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#fff',
     marginBottom: 24,
   },
-  crownContainer: {
-    marginBottom: 12,
+  winnerContainer: {
+    position: 'relative',
+    marginBottom: 16,
   },
-  crownEmoji: {
-    fontSize: 64,
+  winnerImage: {
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    borderWidth: 4,
+    borderColor: '#FFD700',
+    backgroundColor: '#f0f0f0',
   },
-  winnerTitle: {
-    fontSize: 20,
+  crownBadge: {
+    position: 'absolute',
+    top: -10,
+    right: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    borderRadius: 20,
+    padding: 8,
+  },
+  winnerLabel: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#fff',
     marginBottom: 8,
   },
-  winnerName: {
-    fontSize: 36,
-    fontWeight: 'bold',
-    marginBottom: 8,
-  },
-  winnerSimilarity: {
-    fontSize: 48,
-    fontWeight: 'bold',
-  },
-  winnerSubtitle: {
-    fontSize: 16,
-    marginTop: 4,
+  similarityText: {
+    fontSize: 18,
+    color: '#fff',
+    opacity: 0.9,
   },
   comparisonSection: {
-    marginBottom: 24,
-  },
-  comparisonCard: {
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
+    padding: 24,
     alignItems: 'center',
   },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
-  },
-  cardEmoji: {
-    fontSize: 24,
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  imageContainer: {
-    position: 'relative',
-    width: '100%',
-    aspectRatio: 3 / 4,
-    borderRadius: 12,
-    overflow: 'hidden',
-    marginBottom: 12,
-    backgroundColor: '#f0f0f0',
-  },
-  comparisonImage: {
-    width: '100%',
-    height: '100%',
-  },
-  winnerBadge: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cardLabel: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  cardPercentage: {
-    fontSize: 32,
-    fontWeight: 'bold',
-  },
-  vsDivider: {
-    alignItems: 'center',
-    marginVertical: 8,
-  },
-  vsText: {
-    fontSize: 24,
-    fontWeight: 'bold',
-  },
-  differenceText: {
-    fontSize: 14,
-    marginTop: 4,
-  },
-  mainImageCard: {
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 24,
-    alignItems: 'center',
-  },
-  mainImageTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 12,
-  },
-  mainImageContainer: {
-    width: 120,
-    aspectRatio: 3 / 4,
-    borderRadius: 12,
-    overflow: 'hidden',
-    marginBottom: 8,
-    backgroundColor: '#f0f0f0',
-  },
-  mainImage: {
-    width: '100%',
-    height: '100%',
-  },
-  mainImageLabel: {
-    fontSize: 16,
-  },
-  summaryCard: {
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
-  },
-  summaryTitle: {
+  sectionTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    marginBottom: 12,
+    marginBottom: 16,
+  },
+  mainImageContainer: {
+    alignItems: 'center',
+  },
+  mainImage: {
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    backgroundColor: '#f0f0f0',
+  },
+  mainImageLabel: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginTop: 12,
+  },
+  loserSection: {
+    padding: 24,
+  },
+  loserContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+    borderRadius: 16,
+    padding: 16,
+  },
+  loserImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: '#f0f0f0',
+  },
+  loserInfo: {
+    flex: 1,
+    marginLeft: 16,
+  },
+  loserLabel: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  loserSimilarity: {
+    fontSize: 16,
+    opacity: 0.7,
+  },
+  summarySection: {
+    padding: 24,
   },
   summaryText: {
     fontSize: 16,
     lineHeight: 24,
   },
-  brandingFooter: {
-    alignItems: 'center',
-    paddingTop: 16,
-    borderTopWidth: 2,
-    borderTopColor: 'rgba(255, 215, 0, 0.3)',
-  },
-  footerText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
   reasonsSection: {
-    marginBottom: 24,
-  },
-  reasonsTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 16,
+    padding: 24,
   },
   reasonCard: {
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
   },
-  reasonFeature: {
-    fontSize: 18,
-    fontWeight: 'bold',
+  reasonHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: 8,
+  },
+  reasonFeature: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
   },
   reasonDescription: {
     fontSize: 14,
     lineHeight: 20,
-    marginBottom: 16,
+    marginBottom: 8,
   },
-  comparisonBars: {
-    gap: 12,
+  reasonSimilarity: {
+    fontSize: 14,
+    opacity: 0.7,
   },
-  barRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  barLabel: {
-    fontSize: 12,
-    width: 60,
-  },
-  barContainer: {
-    flex: 1,
-    height: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  barFill: {
-    height: '100%',
-    borderRadius: 4,
-  },
-  barValue: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    width: 40,
-    textAlign: 'right',
-  },
-  actionsSection: {
-    gap: 12,
-  },
-  shareButton: {
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  shareGradient: {
+  newComparisonButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 16,
-    gap: 8,
-  },
-  shareButtonText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  newButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
+    backgroundColor: colors.primary,
+    marginHorizontal: 24,
+    marginTop: 16,
+    padding: 16,
     borderRadius: 12,
-    gap: 8,
   },
-  newButtonText: {
-    fontSize: 16,
-    fontWeight: 'bold',
+  newComparisonButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+    marginLeft: 8,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
   },
   modalContent: {
-    borderRadius: 20,
+    backgroundColor: '#fff',
+    borderRadius: 16,
     padding: 24,
+    alignItems: 'center',
     width: '100%',
     maxWidth: 400,
-    alignItems: 'center',
-  },
-  modalEmoji: {
-    fontSize: 48,
-    marginBottom: 12,
   },
   modalTitle: {
     fontSize: 20,
     fontWeight: 'bold',
+    marginTop: 16,
     marginBottom: 12,
   },
   modalMessage: {
     fontSize: 16,
     textAlign: 'center',
     marginBottom: 24,
-    lineHeight: 22,
+    color: '#666',
   },
   modalButton: {
-    paddingVertical: 12,
+    backgroundColor: colors.primary,
     paddingHorizontal: 32,
+    paddingVertical: 12,
     borderRadius: 12,
-    minWidth: 100,
   },
   modalButtonText: {
+    color: '#fff',
     fontSize: 16,
-    fontWeight: 'bold',
-    textAlign: 'center',
+    fontWeight: '600',
   },
 });

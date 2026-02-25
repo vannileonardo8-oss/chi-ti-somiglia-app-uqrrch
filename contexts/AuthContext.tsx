@@ -3,6 +3,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { Platform } from "react-native";
 import * as Linking from "expo-linking";
 import { authClient, setBearerToken, clearAuthTokens } from "@/lib/auth";
+import { supabase } from "@/lib/supabase";
 
 interface User {
   id: string;
@@ -50,7 +51,6 @@ function openOAuthPopup(provider: string): Promise<string> {
     let messageReceived = false;
 
     const handleMessage = (event: MessageEvent) => {
-      // Accept messages from same origin only
       if (event.origin !== window.location.origin) {
         return;
       }
@@ -62,7 +62,6 @@ function openOAuthPopup(provider: string): Promise<string> {
         window.removeEventListener("message", handleMessage);
         clearInterval(checkClosed);
         console.log("[OAuth] Success - token/session received");
-        // Resolve with token (may be "cookie-auth" for cookie-based sessions)
         resolve(event.data.token || "cookie-auth");
       } else if (event.data?.type === "oauth-error") {
         messageReceived = true;
@@ -86,11 +85,10 @@ function openOAuthPopup(provider: string): Promise<string> {
           }
         }
       } catch (e) {
-        // Ignore cross-origin errors when checking popup.closed
+        // Ignore cross-origin errors
       }
     }, 500);
 
-    // Timeout after 3 minutes
     setTimeout(() => {
       if (!messageReceived) {
         console.error("[OAuth] Timeout - no response after 3 minutes");
@@ -111,28 +109,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     console.log("[AuthContext] Initializing - fetching user");
     fetchUser();
 
-    // Listen for deep links (e.g. from social auth redirects)
+    // Listen for deep links
     const subscription = Linking.addEventListener("url", (event) => {
       console.log("[AuthContext] Deep link received:", event.url);
       
-      // Parse the URL to check if it's an auth callback
       const url = event.url;
       if (url.includes("auth-callback")) {
         console.log("[AuthContext] Auth callback detected, will be handled by auth-callback screen");
-        // The auth-callback screen will handle the session fetch
-        // We don't need to do anything here
       }
     });
 
-    // POLLING: Refresh session every 5 minutes to keep SecureStore token in sync
-    // This prevents 401 errors when the session token rotates
+    // Listen for Supabase auth state changes
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log("[AuthContext] Supabase auth state changed:", event);
+      
+      if (event === 'SIGNED_IN' && session) {
+        console.log("[AuthContext] User signed in via Supabase");
+        // Sync with Better Auth if needed
+        await fetchUser();
+      } else if (event === 'SIGNED_OUT') {
+        console.log("[AuthContext] User signed out via Supabase");
+        setUser(null);
+      }
+    });
+
+    // Auto-refresh session every 5 minutes
     const intervalId = setInterval(() => {
-      console.log("[AuthContext] Auto-refreshing user session to sync token...");
+      console.log("[AuthContext] Auto-refreshing user session...");
       fetchUser();
-    }, 5 * 60 * 1000); // 5 minutes
+    }, 5 * 60 * 1000);
 
     return () => {
       subscription.remove();
+      authListener.subscription.unsubscribe();
       clearInterval(intervalId);
     };
   }, []);
@@ -141,16 +150,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       setLoading(true);
       console.log("[AuthContext] Fetching user session...");
+      
+      // Try Better Auth first
       const session = await authClient.getSession();
-      console.log("[AuthContext] Session response:", session);
+      console.log("[AuthContext] Better Auth session response:", session);
       
       if (session?.data?.user) {
-        console.log("[AuthContext] User found:", session.data.user.email);
+        console.log("[AuthContext] User found via Better Auth:", session.data.user.email);
         setUser(session.data.user as User);
-        // Sync token to SecureStore for utils/api.ts
+        
+        // Sync token
         if (session.data.session?.token) {
           await setBearerToken(session.data.session.token);
           console.log("[AuthContext] Bearer token synced");
+        }
+        
+        // Sync with Supabase
+        const { data: supabaseSession } = await supabase.auth.getSession();
+        if (!supabaseSession.session) {
+          console.log("[AuthContext] Syncing session to Supabase...");
+          // Note: In production, you'd want to sync the auth state properly
+          // For now, we'll rely on Better Auth as the primary auth system
         }
       } else {
         console.log("[AuthContext] No user session found");
@@ -168,7 +188,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signInWithEmail = async (email: string, password: string) => {
     try {
       console.log("[AuthContext] Signing in with email:", email);
+      
+      // Sign in with Better Auth
       await authClient.signIn.email({ email, password });
+      
+      // Also sign in with Supabase for storage access
+      const { error: supabaseError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      
+      if (supabaseError) {
+        console.warn("[AuthContext] Supabase sign in warning:", supabaseError);
+        // Don't throw - Better Auth is primary
+      }
+      
       await fetchUser();
     } catch (error) {
       console.error("[AuthContext] Email sign in failed:", error);
@@ -179,11 +213,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signUpWithEmail = async (email: string, password: string, name?: string) => {
     try {
       console.log("[AuthContext] Signing up with email:", email);
+      
+      // Sign up with Better Auth
       await authClient.signUp.email({
         email,
         password,
         name,
       });
+      
+      // Also sign up with Supabase for storage access
+      const { error: supabaseError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            name: name || '',
+          },
+        },
+      });
+      
+      if (supabaseError) {
+        console.warn("[AuthContext] Supabase sign up warning:", supabaseError);
+        // Don't throw - Better Auth is primary
+      }
+      
       await fetchUser();
     } catch (error) {
       console.error("[AuthContext] Email sign up failed:", error);
@@ -196,7 +249,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log(`[AuthContext] Starting ${provider} sign in (platform: ${Platform.OS})`);
       
       if (Platform.OS === "web") {
-        // On web: use full-page redirect OAuth flow via authClient.
         const callbackURL = `${window.location.origin}/auth-callback`;
 
         console.log(`[AuthContext] Using full-page redirect OAuth for ${provider}`);
@@ -209,7 +261,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         console.log(`[AuthContext] signIn.social result:`, JSON.stringify(result));
 
-        // Check for errors
         if (result?.error) {
           const statusCode = result.error.status;
           const errMsg = result.error.message || result.error.statusText || `${provider} sign-in failed`;
@@ -224,7 +275,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           throw new Error(errMsg);
         }
 
-        // If we get a URL back, navigate to it
         if (result?.data?.url) {
           console.log(`[AuthContext] Navigating to OAuth URL:`, result.data.url);
           window.location.href = result.data.url;
@@ -234,13 +284,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.log(`[AuthContext] signIn.social completed (redirect may have happened)`);
       } else {
         console.log(`[AuthContext] Using native OAuth flow for ${provider}`);
-        // Native: Use the expoClient plugin which handles OAuth via expo-web-browser
-        // IMPORTANT: For Expo Go, we need to use the Expo Go redirect URL format
-        // The expoClient plugin will handle this automatically
+        
         const result = await authClient.signIn.social({
           provider,
-          // Don't specify callbackURL - let expoClient plugin handle it
-          // It will use the correct scheme (exp:// for Expo Go, custom scheme for standalone)
         });
 
         console.log(`[AuthContext] Native signIn.social result:`, JSON.stringify(result));
@@ -259,12 +305,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           throw new Error(errMsg);
         }
         
-        // The OAuth flow will return via deep link to auth-callback screen
-        // The auth-callback screen will handle the session and redirect
         console.log(`[AuthContext] OAuth redirect initiated for ${provider}, waiting for callback...`);
-        
-        // Don't fetch user here - let the auth-callback screen handle it
-        // This prevents race conditions
       }
     } catch (error) {
       console.error(`[AuthContext] ${provider} sign in failed:`, error);
@@ -279,14 +320,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = async () => {
     try {
       console.log("[AuthContext] Signing out...");
+      
+      // Sign out from Better Auth
       await authClient.signOut();
+      
+      // Sign out from Supabase
+      await supabase.auth.signOut();
     } catch (error) {
       console.error("[AuthContext] Sign out failed (API):", error);
     } finally {
-       // Always clear local state
-       console.log("[AuthContext] Clearing local auth state");
-       setUser(null);
-       await clearAuthTokens();
+      console.log("[AuthContext] Clearing local auth state");
+      setUser(null);
+      await clearAuthTokens();
     }
   };
 

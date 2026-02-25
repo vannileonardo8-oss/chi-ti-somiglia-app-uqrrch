@@ -14,37 +14,34 @@ export default function AuthCallbackScreen() {
   const params = useLocalSearchParams();
 
   useEffect(() => {
+    let isMounted = true;
+    
     const handleCallback = async () => {
+      if (!isMounted) return;
       try {
         if (Platform.OS !== "web") {
-          // On native, this screen is reached via deep link after OAuth
+          // Native OAuth callback handling
           console.log("[AuthCallback Native] Processing OAuth callback...");
           console.log("[AuthCallback Native] URL params:", JSON.stringify(params));
           
-          // Extract token from URL parameters
-          // The backend sends: ?cookie=better-auth.session_token%3D<token>&better_auth_token=<token>
           const betterAuthToken = params.better_auth_token as string;
           const cookieParam = params.cookie as string;
           const tokenParam = params.token as string;
           
           let extractedToken: string | null = null;
           
-          // Try to extract token from better_auth_token parameter
           if (betterAuthToken) {
             console.log("[AuthCallback Native] Found better_auth_token in URL");
             extractedToken = betterAuthToken;
           }
           
-          // Try token parameter
           if (!extractedToken && tokenParam) {
             console.log("[AuthCallback Native] Found token in URL");
             extractedToken = tokenParam;
           }
           
-          // Try to extract token from cookie parameter
           if (!extractedToken && cookieParam) {
             console.log("[AuthCallback Native] Parsing cookie parameter:", cookieParam);
-            // cookie format: "better-auth.session_token=<token>"
             const match = cookieParam.match(/better-auth\.session_token[=%]([^&;]+)/);
             if (match && match[1]) {
               extractedToken = decodeURIComponent(match[1]);
@@ -56,20 +53,25 @@ export default function AuthCallbackScreen() {
             console.log("[AuthCallback Native] Token found, storing and fetching user...");
             await setBearerToken(extractedToken);
             
-            // Fetch user session immediately with the new token
+            // Wait a moment for token to be stored
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            
+            // Fetch user session
             console.log("[AuthCallback Native] Fetching user session with token...");
             await fetchUser();
             
             setStatus("success");
             setMessage("Autenticazione riuscita!");
             
-            // Redirect to home immediately
+            // Redirect to home
             console.log("[AuthCallback Native] Redirecting to home...");
-            router.replace("/(tabs)/(home)");
+            setTimeout(() => {
+              router.replace("/(tabs)/(home)");
+            }, 500);
             return;
           }
           
-          // Fallback: try to fetch session from Better Auth (cookie-based)
+          // Fallback: try to fetch session
           console.log("[AuthCallback Native] No token in URL, trying session fetch...");
           await new Promise((resolve) => setTimeout(resolve, 1000));
           
@@ -93,28 +95,26 @@ export default function AuthCallbackScreen() {
               console.error(`[AuthCallback Native] Session fetch error (attempt ${attempts}):`, err);
             }
             
-            // Wait before retrying
             if (attempts < maxAttempts) {
-              await new Promise((resolve) => setTimeout(resolve, 1000));
+              await new Promise((resolve) => setTimeout(resolve, 1500));
             }
           }
           
           if (session?.data?.user) {
-            // Store token if available
             if (session.data.session?.token) {
               await setBearerToken(session.data.session.token);
               console.log("[AuthCallback Native] Token stored from session");
             }
             
-            // Trigger a user fetch in AuthContext to update global state
             await fetchUser();
             
             setStatus("success");
             setMessage("Autenticazione riuscita!");
             
-            // Redirect to home
             console.log("[AuthCallback Native] Redirecting to home...");
-            router.replace("/(tabs)/(home)");
+            setTimeout(() => {
+              router.replace("/(tabs)/(home)");
+            }, 500);
           } else {
             console.error("[AuthCallback Native] No user in session after all attempts");
             setStatus("error");
@@ -127,11 +127,10 @@ export default function AuthCallbackScreen() {
           return;
         }
 
-        // Web flow
-        console.log("[AuthCallback] Processing OAuth callback...");
-        console.log("[AuthCallback] Current URL:", window.location.href);
+        // Web OAuth callback handling
+        console.log("[AuthCallback Web] Processing OAuth callback...");
+        console.log("[AuthCallback Web] Current URL:", window.location.href);
 
-        // Check URL params for token (Better Auth may pass it in query string)
         const urlParams = new URLSearchParams(window.location.search);
         const hashParams = new URLSearchParams(window.location.hash.replace("#", "?"));
 
@@ -141,76 +140,65 @@ export default function AuthCallbackScreen() {
           hashParams.get("token") ||
           hashParams.get("better_auth_token");
 
-        console.log("[AuthCallback] URL token found:", !!urlToken);
-        console.log("[AuthCallback] URL params:", window.location.search);
+        console.log("[AuthCallback Web] URL token found:", !!urlToken);
 
         if (urlToken) {
-          // Token was passed directly in the URL
-          console.log("[AuthCallback] Token found in URL, storing immediately...");
+          console.log("[AuthCallback Web] Token found in URL, storing...");
           try {
             localStorage.setItem("chi-ti-somiglia_bearer_token", urlToken);
-            console.log("[AuthCallback] Token stored in localStorage synchronously");
+            console.log("[AuthCallback Web] Token stored in localStorage");
           } catch (e) {
-            console.warn("[AuthCallback] Failed to store token synchronously:", e);
+            console.warn("[AuthCallback Web] Failed to store token:", e);
           }
           await setBearerToken(urlToken);
           
-          // Fetch user to update AuthContext
+          // Fetch user to update context
           await fetchUser();
           
           setStatus("success");
           setMessage("Autenticazione riuscita! Reindirizzamento...");
 
-          // Handle both popup and full-page redirect flows
           if (window.opener) {
-            // Popup flow: send token to parent and close
             window.opener.postMessage(
               { type: "oauth-success", token: urlToken },
               window.location.origin
             );
             setTimeout(() => window.close(), 1000);
           } else {
-            // Full-page redirect flow: navigate to home
             setTimeout(() => router.replace("/(tabs)/(home)"), 500);
           }
           return;
         }
 
-        // No token in URL - try to get session from Better Auth (cookie-based)
-        // Wait a moment for cookies to be set after the OAuth redirect
+        // No token in URL - try session fetch
         await new Promise((resolve) => setTimeout(resolve, 800));
 
-        console.log("[AuthCallback] Fetching session from Better Auth...");
+        console.log("[AuthCallback Web] Fetching session from Better Auth...");
         const session = await authClient.getSession();
-        console.log("[AuthCallback] Session after OAuth:", JSON.stringify(session));
+        console.log("[AuthCallback Web] Session after OAuth:", JSON.stringify(session));
 
         if (session?.data?.session?.token) {
           const token = session.data.session.token;
-          console.log("[AuthCallback] Session token found, storing...");
+          console.log("[AuthCallback Web] Session token found, storing...");
           await setBearerToken(token);
           
-          // Fetch user to update AuthContext
           await fetchUser();
           
           setStatus("success");
           setMessage("Autenticazione riuscita! Reindirizzamento...");
 
           if (window.opener) {
-            // Popup flow
             window.opener.postMessage(
               { type: "oauth-success", token },
               window.location.origin
             );
             setTimeout(() => window.close(), 1000);
           } else {
-            // Full-page redirect flow
             setTimeout(() => router.replace("/(tabs)/(home)"), 500);
           }
         } else if (session?.data?.user) {
-          // Cookie-based auth - user is authenticated but no explicit token
-          console.log("[AuthCallback] User found in session (cookie-based auth)");
+          console.log("[AuthCallback Web] User found in session (cookie-based auth)");
           
-          // Fetch user to update AuthContext
           await fetchUser();
           
           setStatus("success");
@@ -226,7 +214,7 @@ export default function AuthCallbackScreen() {
             setTimeout(() => router.replace("/(tabs)/(home)"), 500);
           }
         } else {
-          console.error("[AuthCallback] No token or user in session");
+          console.error("[AuthCallback Web] No token or user in session");
           setStatus("error");
           setMessage("Autenticazione fallita - nessuna sessione ricevuta");
 
@@ -236,7 +224,6 @@ export default function AuthCallbackScreen() {
               window.location.origin
             );
           } else {
-            // Go back to auth screen after a delay
             setTimeout(() => router.replace("/auth"), 2000);
           }
         }
@@ -257,7 +244,11 @@ export default function AuthCallbackScreen() {
     };
 
     handleCallback();
-  }, [params]);
+    
+    return () => {
+      isMounted = false;
+    };
+  }, [params, fetchUser, router]);
 
   return (
     <View style={styles.container}>

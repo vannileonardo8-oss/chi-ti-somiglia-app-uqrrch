@@ -1,4 +1,14 @@
 
+import React, { useState } from 'react';
+import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
+import { IconSymbol } from '@/components/IconSymbol';
+import { LinearGradient } from 'expo-linear-gradient';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { colors } from '@/styles/commonStyles';
+import { Stack, useRouter } from 'expo-router';
+import { useAuth } from '@/contexts/AuthContext';
+import { FaceSelector } from '@/components/FaceSelector';
 import {
   View,
   Text,
@@ -11,17 +21,8 @@ import {
   Modal,
   Platform,
 } from 'react-native';
-import React, { useState } from 'react';
-import { LinearGradient } from 'expo-linear-gradient';
-import { colors } from '@/styles/commonStyles';
-import { Stack, useRouter } from 'expo-router';
-import { FaceSelector } from '@/components/FaceSelector';
-import { useAuth } from '@/contexts/AuthContext';
 import { BACKEND_URL, authenticatedPost, getBearerToken } from '@/utils/api';
-import * as ImageManipulator from 'expo-image-manipulator';
-import * as ImagePicker from 'expo-image-picker';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { IconSymbol } from '@/components/IconSymbol';
+import { uploadImageToSupabase, saveComparisonToSupabase } from '@/lib/supabase';
 
 interface ImageData {
   uri: string;
@@ -37,7 +38,7 @@ interface Face {
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { signOut } = useAuth();
+  const { signOut, user } = useAuth();
 
   const [mainImage, setMainImage] = useState<ImageData | null>(null);
   const [compareImage1, setCompareImage1] = useState<ImageData | null>(null);
@@ -256,37 +257,20 @@ export default function HomeScreen() {
   };
 
   const uploadImage = async (imageUri: string): Promise<string> => {
-    console.log('[API] Uploading image (web):', imageUri);
-    
-    // Fetch the blob from the URI
-    const response = await fetch(imageUri);
-    const blob = await response.blob();
-    
-    const formData = new FormData();
-    formData.append('image', blob, 'photo.jpg');
-    
-    const token = await getBearerToken();
-    
-    console.log('[API] Sending upload request to:', `${BACKEND_URL}/api/upload/image`);
-    
-    const uploadResponse = await fetch(`${BACKEND_URL}/api/upload/image`, {
-      method: 'POST',
-      body: formData,
-      headers: {
-        'Accept': 'application/json',
-        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-      },
-    });
-    
-    if (!uploadResponse.ok) {
-      const errorText = await uploadResponse.text();
-      console.error('[API] Upload error:', uploadResponse.status, errorText);
-      throw new Error(`Upload failed: ${uploadResponse.status} - ${errorText}`);
+    if (!user) {
+      throw new Error('User not authenticated');
     }
     
-    const data = await uploadResponse.json();
-    console.log('[API] Upload success:', data);
-    return data.url;
+    console.log('[Supabase] Uploading image to Supabase Storage:', imageUri);
+    
+    try {
+      const result = await uploadImageToSupabase(imageUri, user.id);
+      console.log('[Supabase] Upload success:', result.url);
+      return result.url;
+    } catch (error) {
+      console.error('[Supabase] Upload failed:', error);
+      throw error;
+    }
   };
 
   const handleAnalyze = async () => {
@@ -296,23 +280,28 @@ export default function HomeScreen() {
       showError('Carica tutte e tre le foto per continuare.');
       return;
     }
+    
+    if (!user) {
+      showError('Devi effettuare l\'accesso per analizzare le foto.');
+      return;
+    }
 
     setIsAnalyzing(true);
 
     try {
-      console.log('[API] Using cached image URLs for analysis...');
+      console.log('[Analysis] Using cached image URLs for analysis...');
       
       // Use already-uploaded URLs from face detection step, or upload if missing
       const resolvedMainUrl = mainImageUrl || await uploadImage(mainImage.uri);
       const resolvedCompare1Url = compareImage1Url || await uploadImage(compareImage1.uri);
       const resolvedCompare2Url = compareImage2Url || await uploadImage(compareImage2.uri);
       
-      console.log('[API] All images ready');
-      console.log('[API] Main:', resolvedMainUrl);
-      console.log('[API] Compare1:', resolvedCompare1Url);
-      console.log('[API] Compare2:', resolvedCompare2Url);
+      console.log('[Analysis] All images uploaded to Supabase Storage');
+      console.log('[Analysis] Main:', resolvedMainUrl);
+      console.log('[Analysis] Compare1:', resolvedCompare1Url);
+      console.log('[Analysis] Compare2:', resolvedCompare2Url);
       
-      console.log('[API] Requesting comparison with authenticated API...');
+      console.log('[Analysis] Requesting AI comparison from backend...');
       const result = await authenticatedPost('/api/compare', {
         mainImageUrl: resolvedMainUrl,
         mainImageLabel: mainImage.label || 'Principale',
@@ -322,9 +311,26 @@ export default function HomeScreen() {
         compareImage2Label: compareImage2.label || 'Foto 2',
       });
       
-      console.log('[API] Comparison result:', result);
+      console.log('[Analysis] AI comparison result:', result);
       
-      router.push(`/results/${result.comparisonId}`);
+      // Save to Supabase database for persistent history
+      console.log('[Analysis] Saving comparison to Supabase database...');
+      const comparisonId = await saveComparisonToSupabase({
+        userId: user.id,
+        mainImageUrl: resolvedMainUrl,
+        mainImageLabel: mainImage.label || 'Principale',
+        compareImage1Url: resolvedCompare1Url,
+        compareImage1Label: compareImage1.label || 'Foto 1',
+        compareImage2Url: resolvedCompare2Url,
+        compareImage2Label: compareImage2.label || 'Foto 2',
+        winner: result.winner,
+        analysisResult: result,
+      });
+      
+      console.log('[Analysis] Comparison saved with ID:', comparisonId);
+      
+      // Navigate to results with the Supabase comparison ID
+      router.push(`/results/${comparisonId}`);
     } catch (error: any) {
       console.error('Error analyzing images:', error);
       let errorMessage = error?.message || 'Si è verificato un errore durante l\'analisi. Riprova.';
