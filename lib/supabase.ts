@@ -6,7 +6,7 @@ import { Platform } from 'react-native';
 const SUPABASE_URL = 'https://fdnurgfcocmgknbmpjtd.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZkbnVyZ2Zjb2NtZ2tuYm1wanRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mzk2NDU5NzQsImV4cCI6MjA1NTIyMTk3NH0.Zy8xQVBqYXNrZXRfYW5vbl9rZXlfaGVyZQ';
 
-// Helper to get Supabase user ID from Better Auth user
+// Helper to get Supabase user ID
 export async function getSupabaseUserId(): Promise<string | null> {
   try {
     const { data: { session } } = await supabase.auth.getSession();
@@ -46,7 +46,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     storage: ExpoSecureStoreAdapter,
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: false,
+    detectSessionInUrl: Platform.OS === 'web', // Enable for web OAuth callbacks
+    flowType: 'pkce', // Use PKCE flow for better security
   },
 });
 

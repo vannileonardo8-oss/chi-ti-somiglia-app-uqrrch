@@ -5,6 +5,7 @@ import { Platform } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { authClient, setBearerToken } from "@/lib/auth";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabase";
 
 export default function AuthCallbackScreen() {
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
@@ -19,104 +20,39 @@ export default function AuthCallbackScreen() {
     const handleCallback = async () => {
       if (!isMounted) return;
       try {
-        if (Platform.OS !== "web") {
-          // Native OAuth callback handling
-          console.log("[AuthCallback Native] Processing OAuth callback...");
-          console.log("[AuthCallback Native] URL params:", JSON.stringify(params));
+        console.log("[AuthCallback] Processing OAuth callback...");
+        console.log("[AuthCallback] Platform:", Platform.OS);
+        console.log("[AuthCallback] URL params:", JSON.stringify(params));
+
+        if (Platform.OS === "web") {
+          // Web OAuth callback - Supabase handles this automatically
+          console.log("[AuthCallback Web] Checking for Supabase session...");
           
-          const betterAuthToken = params.better_auth_token as string;
-          const cookieParam = params.cookie as string;
-          const tokenParam = params.token as string;
+          // Wait for Supabase to process the OAuth callback
+          await new Promise((resolve) => setTimeout(resolve, 1000));
           
-          let extractedToken: string | null = null;
+          const { data: { session }, error } = await supabase.auth.getSession();
           
-          if (betterAuthToken) {
-            console.log("[AuthCallback Native] Found better_auth_token in URL");
-            extractedToken = betterAuthToken;
+          if (error) {
+            console.error("[AuthCallback Web] Session error:", error);
+            throw new Error("Impossibile recuperare la sessione. Riprova.");
           }
           
-          if (!extractedToken && tokenParam) {
-            console.log("[AuthCallback Native] Found token in URL");
-            extractedToken = tokenParam;
-          }
-          
-          if (!extractedToken && cookieParam) {
-            console.log("[AuthCallback Native] Parsing cookie parameter:", cookieParam);
-            const match = cookieParam.match(/better-auth\.session_token[=%]([^&;]+)/);
-            if (match && match[1]) {
-              extractedToken = decodeURIComponent(match[1]);
-              console.log("[AuthCallback Native] Extracted token from cookie parameter");
-            }
-          }
-          
-          if (extractedToken) {
-            console.log("[AuthCallback Native] Token found, storing and fetching user...");
-            await setBearerToken(extractedToken);
+          if (session) {
+            console.log("[AuthCallback Web] Supabase session found:", session.user.email);
             
-            // Wait a moment for token to be stored
-            await new Promise((resolve) => setTimeout(resolve, 500));
-            
-            // Fetch user session
-            console.log("[AuthCallback Native] Fetching user session with token...");
+            // Update auth context
             await fetchUser();
             
             setStatus("success");
             setMessage("Autenticazione riuscita!");
             
             // Redirect to home
-            console.log("[AuthCallback Native] Redirecting to home...");
-            setTimeout(() => {
-              router.replace("/(tabs)/(home)");
-            }, 500);
-            return;
-          }
-          
-          // Fallback: try to fetch session
-          console.log("[AuthCallback Native] No token in URL, trying session fetch...");
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-          
-          let session = null;
-          let attempts = 0;
-          const maxAttempts = 3;
-          
-          while (!session?.data?.user && attempts < maxAttempts) {
-            attempts++;
-            console.log(`[AuthCallback Native] Fetching session (attempt ${attempts}/${maxAttempts})...`);
-            
-            try {
-              session = await authClient.getSession();
-              console.log(`[AuthCallback Native] Session (attempt ${attempts}):`, JSON.stringify(session));
-              
-              if (session?.data?.user) {
-                console.log("[AuthCallback Native] User found:", session.data.user.email);
-                break;
-              }
-            } catch (err) {
-              console.error(`[AuthCallback Native] Session fetch error (attempt ${attempts}):`, err);
-            }
-            
-            if (attempts < maxAttempts) {
-              await new Promise((resolve) => setTimeout(resolve, 1500));
-            }
-          }
-          
-          if (session?.data?.user) {
-            if (session.data.session?.token) {
-              await setBearerToken(session.data.session.token);
-              console.log("[AuthCallback Native] Token stored from session");
-            }
-            
-            await fetchUser();
-            
-            setStatus("success");
-            setMessage("Autenticazione riuscita!");
-            
-            console.log("[AuthCallback Native] Redirecting to home...");
             setTimeout(() => {
               router.replace("/(tabs)/(home)");
             }, 500);
           } else {
-            console.error("[AuthCallback Native] No user in session after all attempts");
+            console.error("[AuthCallback Web] No session found");
             setStatus("error");
             setMessage("Autenticazione fallita - sessione non trovata. Riprova.");
             
@@ -124,107 +60,59 @@ export default function AuthCallbackScreen() {
               router.replace("/auth");
             }, 2500);
           }
-          return;
-        }
-
-        // Web OAuth callback handling
-        console.log("[AuthCallback Web] Processing OAuth callback...");
-        console.log("[AuthCallback Web] Current URL:", window.location.href);
-
-        const urlParams = new URLSearchParams(window.location.search);
-        const hashParams = new URLSearchParams(window.location.hash.replace("#", "?"));
-
-        const urlToken =
-          urlParams.get("token") ||
-          urlParams.get("better_auth_token") ||
-          hashParams.get("token") ||
-          hashParams.get("better_auth_token");
-
-        console.log("[AuthCallback Web] URL token found:", !!urlToken);
-
-        if (urlToken) {
-          console.log("[AuthCallback Web] Token found in URL, storing...");
-          try {
-            localStorage.setItem("chi-ti-somiglia_bearer_token", urlToken);
-            console.log("[AuthCallback Web] Token stored in localStorage");
-          } catch (e) {
-            console.warn("[AuthCallback Web] Failed to store token:", e);
-          }
-          await setBearerToken(urlToken);
-          
-          // Fetch user to update context
-          await fetchUser();
-          
-          setStatus("success");
-          setMessage("Autenticazione riuscita! Reindirizzamento...");
-
-          if (window.opener) {
-            window.opener.postMessage(
-              { type: "oauth-success", token: urlToken },
-              window.location.origin
-            );
-            setTimeout(() => window.close(), 1000);
-          } else {
-            setTimeout(() => router.replace("/(tabs)/(home)"), 500);
-          }
-          return;
-        }
-
-        // No token in URL - try session fetch
-        await new Promise((resolve) => setTimeout(resolve, 800));
-
-        console.log("[AuthCallback Web] Fetching session from Better Auth...");
-        const session = await authClient.getSession();
-        console.log("[AuthCallback Web] Session after OAuth:", JSON.stringify(session));
-
-        if (session?.data?.session?.token) {
-          const token = session.data.session.token;
-          console.log("[AuthCallback Web] Session token found, storing...");
-          await setBearerToken(token);
-          
-          await fetchUser();
-          
-          setStatus("success");
-          setMessage("Autenticazione riuscita! Reindirizzamento...");
-
-          if (window.opener) {
-            window.opener.postMessage(
-              { type: "oauth-success", token },
-              window.location.origin
-            );
-            setTimeout(() => window.close(), 1000);
-          } else {
-            setTimeout(() => router.replace("/(tabs)/(home)"), 500);
-          }
-        } else if (session?.data?.user) {
-          console.log("[AuthCallback Web] User found in session (cookie-based auth)");
-          
-          await fetchUser();
-          
-          setStatus("success");
-          setMessage("Autenticazione riuscita! Reindirizzamento...");
-
-          if (window.opener) {
-            window.opener.postMessage(
-              { type: "oauth-success", token: "cookie-auth", user: session.data.user },
-              window.location.origin
-            );
-            setTimeout(() => window.close(), 1000);
-          } else {
-            setTimeout(() => router.replace("/(tabs)/(home)"), 500);
-          }
         } else {
-          console.error("[AuthCallback Web] No token or user in session");
-          setStatus("error");
-          setMessage("Autenticazione fallita - nessuna sessione ricevuta");
-
-          if (window.opener) {
-            window.opener.postMessage(
-              { type: "oauth-error", error: "No session received" },
-              window.location.origin
-            );
+          // Native OAuth callback - Supabase handles this via deep link
+          console.log("[AuthCallback Native] Processing deep link callback...");
+          
+          // Wait for Supabase to process the deep link
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+          
+          let session = null;
+          let attempts = 0;
+          const maxAttempts = 5;
+          
+          while (!session && attempts < maxAttempts) {
+            attempts++;
+            console.log(`[AuthCallback Native] Checking session (attempt ${attempts}/${maxAttempts})...`);
+            
+            const { data: { session: currentSession }, error } = await supabase.auth.getSession();
+            
+            if (error) {
+              console.error(`[AuthCallback Native] Session error (attempt ${attempts}):`, error);
+            }
+            
+            if (currentSession) {
+              session = currentSession;
+              console.log("[AuthCallback Native] Session found:", session.user.email);
+              break;
+            }
+            
+            if (attempts < maxAttempts) {
+              await new Promise((resolve) => setTimeout(resolve, 1000));
+            }
+          }
+          
+          if (session) {
+            console.log("[AuthCallback Native] Authentication successful");
+            
+            // Update auth context
+            await fetchUser();
+            
+            setStatus("success");
+            setMessage("Autenticazione riuscita!");
+            
+            // Redirect to home
+            setTimeout(() => {
+              router.replace("/(tabs)/(home)");
+            }, 500);
           } else {
-            setTimeout(() => router.replace("/auth"), 2000);
+            console.error("[AuthCallback Native] No session found after all attempts");
+            setStatus("error");
+            setMessage("Autenticazione fallita - sessione non trovata. Riprova.");
+            
+            setTimeout(() => {
+              router.replace("/auth");
+            }, 2500);
           }
         }
       } catch (err: any) {
@@ -232,14 +120,9 @@ export default function AuthCallbackScreen() {
         setStatus("error");
         setMessage(err?.message || "Autenticazione fallita");
 
-        if (Platform.OS === "web" && window.opener) {
-          window.opener.postMessage(
-            { type: "oauth-error", error: err?.message || "Authentication failed" },
-            window.location.origin
-          );
-        } else {
-          setTimeout(() => router.replace("/auth"), 2000);
-        }
+        setTimeout(() => {
+          router.replace("/auth");
+        }, 2500);
       }
     };
 

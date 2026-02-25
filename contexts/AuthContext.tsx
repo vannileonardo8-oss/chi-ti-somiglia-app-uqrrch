@@ -165,12 +165,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.log("[AuthContext] Bearer token synced");
         }
         
-        // Sync with Supabase
+        // Check if Supabase session exists
         const { data: supabaseSession } = await supabase.auth.getSession();
         if (!supabaseSession.session) {
-          console.log("[AuthContext] Syncing session to Supabase...");
-          // Note: In production, you'd want to sync the auth state properly
-          // For now, we'll rely on Better Auth as the primary auth system
+          console.log("[AuthContext] No Supabase session - user needs to sign in with Supabase for storage access");
         }
       } else {
         console.log("[AuthContext] No user session found");
@@ -189,18 +187,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       console.log("[AuthContext] Signing in with email:", email);
       
-      // Sign in with Better Auth
-      await authClient.signIn.email({ email, password });
-      
-      // Also sign in with Supabase for storage access
-      const { error: supabaseError } = await supabase.auth.signInWithPassword({
+      // Sign in with Supabase FIRST (for storage and database access)
+      const { data: supabaseData, error: supabaseError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
       
       if (supabaseError) {
-        console.warn("[AuthContext] Supabase sign in warning:", supabaseError);
-        // Don't throw - Better Auth is primary
+        console.error("[AuthContext] Supabase sign in failed:", supabaseError);
+        throw new Error("Credenziali non valide. Verifica email e password.");
+      }
+      
+      console.log("[AuthContext] Supabase sign in successful");
+      
+      // Then sign in with Better Auth (for backend API access)
+      try {
+        await authClient.signIn.email({ email, password });
+        console.log("[AuthContext] Better Auth sign in successful");
+      } catch (betterAuthError) {
+        console.warn("[AuthContext] Better Auth sign in warning:", betterAuthError);
+        // Don't throw - Supabase is primary for this app
       }
       
       await fetchUser();
@@ -214,15 +220,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       console.log("[AuthContext] Signing up with email:", email);
       
-      // Sign up with Better Auth
-      await authClient.signUp.email({
-        email,
-        password,
-        name,
-      });
-      
-      // Also sign up with Supabase for storage access
-      const { error: supabaseError } = await supabase.auth.signUp({
+      // Sign up with Supabase FIRST (for storage and database access)
+      const { data: supabaseData, error: supabaseError } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -233,8 +232,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       
       if (supabaseError) {
-        console.warn("[AuthContext] Supabase sign up warning:", supabaseError);
-        // Don't throw - Better Auth is primary
+        console.error("[AuthContext] Supabase sign up failed:", supabaseError);
+        throw new Error("Registrazione fallita. L'email potrebbe essere già in uso.");
+      }
+      
+      console.log("[AuthContext] Supabase sign up successful");
+      
+      // Then sign up with Better Auth (for backend API access)
+      try {
+        await authClient.signUp.email({
+          email,
+          password,
+          name,
+        });
+        console.log("[AuthContext] Better Auth sign up successful");
+      } catch (betterAuthError) {
+        console.warn("[AuthContext] Better Auth sign up warning:", betterAuthError);
+        // Don't throw - Supabase is primary for this app
       }
       
       await fetchUser();
@@ -248,77 +262,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       console.log(`[AuthContext] Starting ${provider} sign in (platform: ${Platform.OS})`);
       
-      if (Platform.OS === "web") {
-        const callbackURL = `${window.location.origin}/auth-callback`;
+      // Use Supabase OAuth for social sign-in (it handles storage/database access automatically)
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: provider as any,
+        options: {
+          redirectTo: Platform.OS === "web" 
+            ? `${window.location.origin}/auth-callback`
+            : "chi-ti-somiglia://auth-callback",
+          skipBrowserRedirect: Platform.OS !== "web",
+        },
+      });
 
-        console.log(`[AuthContext] Using full-page redirect OAuth for ${provider}`);
-        console.log(`[AuthContext] Callback URL:`, callbackURL);
-
-        const result = await authClient.signIn.social({
-          provider,
-          callbackURL,
-        });
-
-        console.log(`[AuthContext] signIn.social result:`, JSON.stringify(result));
-
-        if (result?.error) {
-          const statusCode = result.error.status;
-          const errMsg = result.error.message || result.error.statusText || `${provider} sign-in failed`;
-          console.error(`[AuthContext] signIn.social error (${statusCode}):`, result.error);
-
-          if (statusCode === 404) {
-            throw new Error(
-              `Accesso con ${provider} non disponibile. Le credenziali OAuth non sono ancora configurate sul server. ` +
-              `Usa email e password per accedere.`
-            );
-          }
-          if (statusCode === 403) {
-            throw new Error(
-              `Accesso con ${provider} non disponibile. Il provider OAuth non è configurato sul server. ` +
-              `Usa email e password per accedere.`
-            );
-          }
-          throw new Error(errMsg);
-        }
-
-        if (result?.data?.url) {
-          console.log(`[AuthContext] Navigating to OAuth URL:`, result.data.url);
-          window.location.href = result.data.url;
-          return;
-        }
-
-        console.log(`[AuthContext] signIn.social completed (redirect may have happened)`);
-      } else {
-        console.log(`[AuthContext] Using native OAuth flow for ${provider}`);
+      if (error) {
+        console.error(`[AuthContext] Supabase OAuth error:`, error);
         
-        const result = await authClient.signIn.social({
-          provider,
-        });
-
-        console.log(`[AuthContext] Native signIn.social result:`, JSON.stringify(result));
-
-        if (result?.error) {
-          const statusCode = result.error.status;
-          const errMsg = result.error.message || result.error.statusText || `${provider} sign-in failed`;
-          console.error(`[AuthContext] Native signIn.social error (${statusCode}):`, result.error);
-
-          if (statusCode === 404) {
-            throw new Error(
-              `Accesso con ${provider} non disponibile. Le credenziali OAuth non sono ancora configurate sul server. ` +
-              `Usa email e password per accedere.`
-            );
-          }
-          if (statusCode === 403) {
-            throw new Error(
-              `Accesso con ${provider} non disponibile. Il provider OAuth non è configurato sul server. ` +
-              `Usa email e password per accedere.`
-            );
-          }
-          throw new Error(errMsg);
+        if (error.message.includes("not enabled") || error.message.includes("not configured")) {
+          throw new Error(
+            `Accesso con ${provider === "google" ? "Google" : provider === "apple" ? "Apple" : provider} non disponibile. ` +
+            `Le credenziali OAuth non sono ancora configurate sul server. Usa email e password per accedere.`
+          );
         }
         
-        console.log(`[AuthContext] OAuth redirect initiated for ${provider}, waiting for callback...`);
+        throw error;
       }
+
+      if (Platform.OS === "web" && data?.url) {
+        console.log(`[AuthContext] Redirecting to OAuth URL:`, data.url);
+        window.location.href = data.url;
+        return;
+      }
+
+      if (Platform.OS !== "web" && data?.url) {
+        console.log(`[AuthContext] Opening OAuth URL in browser:`, data.url);
+        // The URL will be opened by Supabase's auth system
+        // The callback will be handled by auth-callback.tsx
+      }
+      
+      console.log(`[AuthContext] OAuth initiated for ${provider}, waiting for callback...`);
     } catch (error) {
       console.error(`[AuthContext] ${provider} sign in failed:`, error);
       throw error;
@@ -333,11 +313,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       console.log("[AuthContext] Signing out...");
       
-      // Sign out from Better Auth
-      await authClient.signOut();
-      
       // Sign out from Supabase
       await supabase.auth.signOut();
+      
+      // Sign out from Better Auth
+      try {
+        await authClient.signOut();
+      } catch (error) {
+        console.warn("[AuthContext] Better Auth sign out warning:", error);
+      }
     } catch (error) {
       console.error("[AuthContext] Sign out failed (API):", error);
     } finally {

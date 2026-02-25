@@ -20,7 +20,7 @@ import * as Sharing from 'expo-sharing';
 import * as Haptics from 'expo-haptics';
 import ViewShot from 'react-native-view-shot';
 import { useAuth } from '@/contexts/AuthContext';
-import { fetchComparisonById } from '@/lib/supabase';
+import { fetchComparisonById, supabase } from '@/lib/supabase';
 
 interface Reason {
   feature: string;
@@ -71,8 +71,8 @@ export default function ResultsScreen() {
   const { user } = useAuth();
 
   const loadResult = useCallback(async () => {
-    if (!id || !user) {
-      console.error('[Results] Missing ID or user');
+    if (!id) {
+      console.error('[Results] Missing ID');
       setLoading(false);
       return;
     }
@@ -81,7 +81,18 @@ export default function ResultsScreen() {
       setLoading(true);
       console.log('[Results] Loading comparison:', id);
       
-      const data = await fetchComparisonById(id as string, user.id);
+      // Get Supabase user ID
+      const { data: { session } } = await supabase.auth.getSession();
+      const supabaseUserId = session?.user?.id;
+      
+      if (!supabaseUserId) {
+        console.error('[Results] No Supabase user logged in');
+        showError('Devi effettuare l\'accesso per visualizzare i risultati');
+        setLoading(false);
+        return;
+      }
+      
+      const data = await fetchComparisonById(id as string, supabaseUserId);
       
       console.log('[Results] Loaded comparison data');
       setResult(data);
@@ -95,7 +106,7 @@ export default function ResultsScreen() {
     } finally {
       setLoading(false);
     }
-  }, [id, user]);
+  }, [id]);
 
   useEffect(() => {
     loadResult();

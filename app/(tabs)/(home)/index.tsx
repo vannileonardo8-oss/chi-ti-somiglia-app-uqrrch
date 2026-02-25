@@ -21,7 +21,7 @@ import {
   Modal,
 } from 'react-native';
 import { BACKEND_URL, authenticatedPost, getBearerToken } from '@/utils/api';
-import { uploadImageToSupabase, saveComparisonToSupabase } from '@/lib/supabase';
+import { uploadImageToSupabase, saveComparisonToSupabase, supabase } from '@/lib/supabase';
 
 interface ImageData {
   uri: string;
@@ -256,14 +256,18 @@ export default function HomeScreen() {
   };
 
   const uploadImage = async (imageUri: string): Promise<string> => {
-    if (!user) {
-      throw new Error('User not authenticated');
+    // Get Supabase user ID (not Better Auth user ID)
+    const { data: { session } } = await supabase.auth.getSession();
+    const supabaseUserId = session?.user?.id;
+    
+    if (!supabaseUserId) {
+      throw new Error('User not authenticated with Supabase');
     }
     
     console.log('[Supabase] Uploading image to Supabase Storage:', imageUri);
     
     try {
-      const result = await uploadImageToSupabase(imageUri, user.id);
+      const result = await uploadImageToSupabase(imageUri, supabaseUserId);
       console.log('[Supabase] Upload success:', result.url);
       return result.url;
     } catch (error) {
@@ -314,8 +318,17 @@ export default function HomeScreen() {
       
       // Save to Supabase database for persistent history
       console.log('[Analysis] Saving comparison to Supabase database...');
+      
+      // Get Supabase user ID for database operations
+      const { data: { session } } = await supabase.auth.getSession();
+      const supabaseUserId = session?.user?.id;
+      
+      if (!supabaseUserId) {
+        throw new Error('User not authenticated with Supabase');
+      }
+      
       const comparisonId = await saveComparisonToSupabase({
-        userId: user.id,
+        userId: supabaseUserId,
         mainImageUrl: resolvedMainUrl,
         mainImageLabel: mainImage.label || 'Principale',
         compareImage1Url: resolvedCompare1Url,

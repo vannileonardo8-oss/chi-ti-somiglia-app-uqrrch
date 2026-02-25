@@ -24,6 +24,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import {
   fetchComparisonHistory,
   deleteComparisonFromSupabase,
+  supabase,
 } from '@/lib/supabase';
 
 interface ComparisonHistoryItem {
@@ -63,17 +64,21 @@ export default function HistoryScreen() {
   }, [user]);
 
   const loadHistory = async () => {
-    if (!user) {
-      console.log('[History] No user logged in');
-      setLoading(false);
-      return;
-    }
-
     try {
       setLoading(true);
       console.log('[History] Loading comparison history from Supabase...');
       
-      const data = await fetchComparisonHistory(user.id);
+      // Get Supabase user ID
+      const { data: { session } } = await supabase.auth.getSession();
+      const supabaseUserId = session?.user?.id;
+      
+      if (!supabaseUserId) {
+        console.log('[History] No Supabase user logged in');
+        setLoading(false);
+        return;
+      }
+      
+      const data = await fetchComparisonHistory(supabaseUserId);
       
       console.log('[History] Loaded', data.length, 'comparisons');
       setHistory(data);
@@ -104,13 +109,22 @@ export default function HistoryScreen() {
   };
 
   const handleDelete = async () => {
-    if (!itemToDelete || !user) return;
+    if (!itemToDelete) return;
 
     try {
       console.log('[History] Deleting comparison:', itemToDelete);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       
-      await deleteComparisonFromSupabase(itemToDelete, user.id);
+      // Get Supabase user ID
+      const { data: { session } } = await supabase.auth.getSession();
+      const supabaseUserId = session?.user?.id;
+      
+      if (!supabaseUserId) {
+        console.error('[History] No Supabase user logged in');
+        return;
+      }
+      
+      await deleteComparisonFromSupabase(itemToDelete, supabaseUserId);
       
       setHistory((prev) => prev.filter((item) => item.id !== itemToDelete));
       setDeleteModalVisible(false);
