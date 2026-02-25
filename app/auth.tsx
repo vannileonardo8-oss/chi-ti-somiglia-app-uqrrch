@@ -107,6 +107,8 @@ export default function AuthScreen() {
           errorMessage = "Accesso annullato.";
         } else if (error.message.includes("timeout")) {
           errorMessage = "Timeout. Riprova.";
+        } else if (error.message.includes("404") || error.message.includes("does not exist") || error.message.includes("Not found")) {
+          errorMessage = `${providerName} OAuth non è ancora configurato sul server. Le credenziali OAuth devono essere aggiunte. Per ora, usa email e password per accedere.`;
         } else if (error.message.includes("403") || error.message.includes("Forbidden")) {
           errorMessage = `${providerName} OAuth non è configurato sul server. Usa email e password per accedere.`;
         } else if (error.message.includes("non è configurato")) {

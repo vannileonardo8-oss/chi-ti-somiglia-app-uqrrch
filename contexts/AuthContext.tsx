@@ -266,6 +266,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const errMsg = result.error.message || result.error.statusText || `${provider} sign-in failed`;
           console.error(`[AuthContext] signIn.social error (${statusCode}):`, result.error);
 
+          if (statusCode === 404) {
+            throw new Error(
+              `Accesso con ${provider} non disponibile. Le credenziali OAuth non sono ancora configurate sul server. ` +
+              `Usa email e password per accedere.`
+            );
+          }
           if (statusCode === 403) {
             throw new Error(
               `Accesso con ${provider} non disponibile. Il provider OAuth non è configurato sul server. ` +
@@ -296,6 +302,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const errMsg = result.error.message || result.error.statusText || `${provider} sign-in failed`;
           console.error(`[AuthContext] Native signIn.social error (${statusCode}):`, result.error);
 
+          if (statusCode === 404) {
+            throw new Error(
+              `Accesso con ${provider} non disponibile. Le credenziali OAuth non sono ancora configurate sul server. ` +
+              `Usa email e password per accedere.`
+            );
+          }
           if (statusCode === 403) {
             throw new Error(
               `Accesso con ${provider} non disponibile. Il provider OAuth non è configurato sul server. ` +
