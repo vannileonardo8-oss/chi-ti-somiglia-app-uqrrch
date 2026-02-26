@@ -284,7 +284,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (error) {
         console.error(`[AuthContext] Supabase OAuth error:`, error);
         
-        // Check for provider not enabled error
+        // Provide detailed error messages based on error type
+        if (error.message.includes("missing OAuth secret")) {
+          const providerName = provider === "google" ? "Google" : provider === "apple" ? "Apple" : "GitHub";
+          throw new Error(
+            `Configurazione OAuth ${providerName} incompleta.\n\n` +
+            `Verifica che nel pannello Supabase (Authentication > Providers > ${providerName}) siano configurati:\n` +
+            `• Client ID\n` +
+            `• Client Secret\n` +
+            `• Redirect URL: ${Platform.OS === "web" ? window.location.origin : "chi-ti-somiglia://"}auth-callback\n\n` +
+            `Dopo aver configurato, riprova l'accesso.`
+          );
+        }
+        
         if (
           error.message.includes("not enabled") || 
           error.message.includes("not configured") ||
@@ -293,9 +305,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         ) {
           const providerName = provider === "google" ? "Google" : provider === "apple" ? "Apple" : "GitHub";
           throw new Error(
-            `L'accesso con ${providerName} non è ancora disponibile.\n\n` +
-            `Per utilizzare questa funzione, il provider OAuth deve essere configurato nel pannello Supabase.\n\n` +
-            `Per ora, utilizza l'accesso con email e password.`
+            `Provider ${providerName} non abilitato.\n\n` +
+            `Abilita il provider nel pannello Supabase:\n` +
+            `Authentication > Providers > ${providerName} > Enable\n\n` +
+            `Poi configura Client ID e Client Secret.`
           );
         }
         

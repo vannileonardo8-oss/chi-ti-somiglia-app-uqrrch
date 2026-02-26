@@ -101,12 +101,12 @@ export default function AuthScreen() {
       let errorMessage = `Accesso con ${providerName} fallito.`;
       
       if (error?.message) {
-        // Check if it's a provider not configured error
+        // Use the detailed error message from AuthContext
         if (
-          error.message.includes("non è ancora disponibile") ||
-          error.message.includes("not enabled") ||
-          error.message.includes("not configured") ||
-          error.message.includes("Unsupported provider")
+          error.message.includes("Configurazione OAuth") ||
+          error.message.includes("Provider") ||
+          error.message.includes("non abilitato") ||
+          error.message.includes("incompleta")
         ) {
           errorMessage = error.message;
         } else if (error.message.includes("popup")) {
@@ -224,13 +224,6 @@ export default function AuthScreen() {
                 : "Hai già un account? Accedi"}
             </Text>
           </TouchableOpacity>
-
-          <View style={styles.infoBox}>
-            <Text style={styles.infoText}>
-              ℹ️ L&apos;accesso con Google e Apple richiede una configurazione aggiuntiva. 
-              Per ora, utilizza l&apos;accesso con email e password.
-            </Text>
-          </View>
         </View>
       </ScrollView>
 
@@ -356,20 +349,6 @@ const styles = StyleSheet.create({
   switchButtonText: {
     color: "#007AFF",
     fontSize: 14,
-  },
-  infoBox: {
-    marginTop: 24,
-    padding: 16,
-    backgroundColor: "#f0f8ff",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#b3d9ff",
-  },
-  infoText: {
-    fontSize: 14,
-    color: "#0066cc",
-    lineHeight: 20,
-    textAlign: "center",
   },
   modalOverlay: {
     flex: 1,
