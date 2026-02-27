@@ -21,8 +21,8 @@ import {
   Modal,
 } from 'react-native';
 import { BACKEND_URL, authenticatedPost, getBearerToken } from '@/utils/api';
-import { supabase } from '@/lib/supabase';
 import { uploadImageToSupabase, saveComparisonToSupabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase';
 
 interface ImageData {
   uri: string;

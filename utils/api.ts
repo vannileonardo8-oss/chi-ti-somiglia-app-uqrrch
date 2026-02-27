@@ -1,3 +1,4 @@
+
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
@@ -66,15 +67,6 @@ export const apiCall = async <T = any>(
 
     console.log("[API] Fetch options:", fetchOptions);
 
-    // Always send the token if we have it (needed for cross-domain/iframe support)
-    const token = await getBearerToken();
-    if (token) {
-      fetchOptions.headers = {
-        ...fetchOptions.headers,
-        Authorization: `Bearer ${token}`,
-      };
-    }
-
     const response = await fetch(url, fetchOptions);
 
     if (!response.ok) {
@@ -100,7 +92,7 @@ export const apiGet = async <T = any>(endpoint: string): Promise<T> => {
 };
 
 /**
- * POST request helper
+ * POST request helper (public - no auth required)
  */
 export const apiPost = async <T = any>(
   endpoint: string,
@@ -186,11 +178,18 @@ export const authenticatedGet = async <T = any>(endpoint: string): Promise<T> =>
 
 /**
  * Authenticated POST request
+ * NOTE: For face detection and comparison, use apiPost instead (no auth required)
  */
 export const authenticatedPost = async <T = any>(
   endpoint: string,
   data: any
 ): Promise<T> => {
+  // Special case: face detection and comparison endpoints are public
+  if (endpoint === '/api/detect-faces' || endpoint === '/api/compare') {
+    console.log('[API] Using public endpoint (no auth required):', endpoint);
+    return apiPost<T>(endpoint, data);
+  }
+  
   return authenticatedApiCall<T>(endpoint, {
     method: "POST",
     body: JSON.stringify(data),

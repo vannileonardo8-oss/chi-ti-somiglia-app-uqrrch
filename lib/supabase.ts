@@ -72,6 +72,7 @@ export async function uploadImageToSupabase(
     const blob = await response.blob();
 
     console.log('[Supabase] Uploading to path:', storagePath);
+    console.log('[Supabase] Blob size:', blob.size, 'bytes');
 
     // Upload to Supabase Storage
     const { data, error } = await supabase.storage
@@ -83,7 +84,7 @@ export async function uploadImageToSupabase(
 
     if (error) {
       console.error('[Supabase] Upload error:', error);
-      throw error;
+      throw new Error(`Errore durante il caricamento dell'immagine: ${error.message}`);
     }
 
     console.log('[Supabase] Upload successful:', data);
@@ -159,7 +160,7 @@ export async function saveComparisonToSupabase(comparison: {
 
     if (error) {
       console.error('[Supabase] Save comparison error:', error);
-      throw error;
+      throw new Error(`Errore durante il salvataggio: ${error.message}`);
     }
 
     console.log('[Supabase] Comparison saved with ID:', data.id);
@@ -183,7 +184,7 @@ export async function fetchComparisonHistory(userId: string): Promise<any[]> {
 
     if (error) {
       console.error('[Supabase] Fetch history error:', error);
-      throw error;
+      throw new Error(`Errore durante il caricamento dello storico: ${error.message}`);
     }
 
     console.log('[Supabase] Fetched', data?.length || 0, 'comparisons');
@@ -211,7 +212,7 @@ export async function fetchComparisonById(
 
     if (error) {
       console.error('[Supabase] Fetch comparison error:', error);
-      throw error;
+      throw new Error(`Errore durante il caricamento del risultato: ${error.message}`);
     }
 
     console.log('[Supabase] Fetched comparison');
@@ -239,7 +240,7 @@ export async function deleteComparisonFromSupabase(
 
     if (error) {
       console.error('[Supabase] Delete comparison error:', error);
-      throw error;
+      throw new Error(`Errore durante l'eliminazione: ${error.message}`);
     }
 
     console.log('[Supabase] Comparison deleted successfully');

@@ -162,6 +162,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           name: supabaseSession.user.user_metadata?.name || supabaseSession.user.user_metadata?.full_name,
           image: supabaseSession.user.user_metadata?.avatar_url,
         });
+        
+        // Sync Better Auth token for backend API calls
+        // Use Supabase access token as bearer token for backend
+        if (supabaseSession.access_token) {
+          await setBearerToken(supabaseSession.access_token);
+          console.log("[AuthContext] Supabase access token synced as bearer token");
+        }
+        
         return;
       }
       
@@ -208,6 +216,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       console.log("[AuthContext] Supabase sign in successful");
       
+      // Sync Supabase access token as bearer token for backend API
+      if (supabaseData.session?.access_token) {
+        await setBearerToken(supabaseData.session.access_token);
+        console.log("[AuthContext] Supabase access token set as bearer token");
+      }
+      
       // Then sign in with Better Auth (for backend API access)
       try {
         await authClient.signIn.email({ email, password });
@@ -245,6 +259,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       
       console.log("[AuthContext] Supabase sign up successful");
+      
+      // Sync Supabase access token as bearer token for backend API
+      if (supabaseData.session?.access_token) {
+        await setBearerToken(supabaseData.session.access_token);
+        console.log("[AuthContext] Supabase access token set as bearer token");
+      }
       
       // Then sign up with Better Auth (for backend API access)
       try {
