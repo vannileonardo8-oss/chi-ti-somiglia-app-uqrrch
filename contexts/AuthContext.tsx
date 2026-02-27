@@ -270,14 +270,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       console.log(`[AuthContext] Starting ${provider} sign in (platform: ${Platform.OS})`);
       
+      // Determine the correct redirect URI based on platform
+      const redirectTo = Platform.OS === "web" 
+        ? `${window.location.origin}/auth-callback`
+        : "chitisomiglia://auth-callback";
+      
+      console.log(`[AuthContext] Using redirect URI: ${redirectTo}`);
+      
       // Use Supabase OAuth for social sign-in (it handles storage/database access automatically)
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: provider as any,
         options: {
-          redirectTo: Platform.OS === "web" 
-            ? `${window.location.origin}/auth-callback`
-            : "chi-ti-somiglia://auth-callback",
+          redirectTo: redirectTo,
           skipBrowserRedirect: Platform.OS !== "web",
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
         },
       });
 
@@ -292,7 +301,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             `Verifica che nel pannello Supabase (Authentication > Providers > ${providerName}) siano configurati:\n` +
             `• Client ID\n` +
             `• Client Secret\n` +
-            `• Redirect URL: ${Platform.OS === "web" ? window.location.origin : "chi-ti-somiglia://"}auth-callback\n\n` +
+            `• Redirect URL: ${redirectTo}\n\n` +
             `Dopo aver configurato, riprova l'accesso.`
           );
         }
