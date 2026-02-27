@@ -313,16 +313,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (error) {
         console.error(`[AuthContext] Supabase OAuth error:`, error);
         
-        // Provide detailed error messages based on error type
-        if (error.message.includes("missing OAuth secret")) {
+        // Provide detailed, user-friendly error messages
+        if (error.message.includes("missing OAuth secret") || error.message.includes("Client secret")) {
           const providerName = provider === "google" ? "Google" : provider === "apple" ? "Apple" : "GitHub";
           throw new Error(
-            `Configurazione OAuth ${providerName} incompleta.\n\n` +
-            `Verifica che nel pannello Supabase (Authentication > Providers > ${providerName}) siano configurati:\n` +
-            `• Client ID\n` +
-            `• Client Secret\n` +
-            `• Redirect URL: ${redirectTo}\n\n` +
-            `Dopo aver configurato, riprova l'accesso.`
+            `❌ Configurazione OAuth ${providerName} incompleta\n\n` +
+            `Per risolvere:\n` +
+            `1. Vai su Supabase Dashboard\n` +
+            `2. Authentication > Providers > ${providerName}\n` +
+            `3. Inserisci Client ID e Client Secret\n` +
+            `4. Salva le modifiche\n\n` +
+            `Vedi SUPABASE_SETUP_INSTRUCTIONS.md per i dettagli completi.`
           );
         }
         
@@ -334,10 +335,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         ) {
           const providerName = provider === "google" ? "Google" : provider === "apple" ? "Apple" : "GitHub";
           throw new Error(
-            `Provider ${providerName} non abilitato.\n\n` +
-            `Abilita il provider nel pannello Supabase:\n` +
-            `Authentication > Providers > ${providerName} > Enable\n\n` +
-            `Poi configura Client ID e Client Secret.`
+            `❌ Provider ${providerName} non abilitato\n\n` +
+            `Per risolvere:\n` +
+            `1. Vai su Supabase Dashboard\n` +
+            `2. Authentication > Providers > ${providerName}\n` +
+            `3. Clicca su "Enable"\n` +
+            `4. Configura Client ID e Client Secret\n\n` +
+            `Vedi SUPABASE_SETUP_INSTRUCTIONS.md per i dettagli completi.`
+          );
+        }
+        
+        if (error.message.includes("403") || error.message.includes("access denied")) {
+          throw new Error(
+            `❌ Errore 403 - Accesso negato da Google\n\n` +
+            `Possibili cause:\n` +
+            `1. L'app è in modalità Test e la tua email non è aggiunta come Test User\n` +
+            `2. Il Redirect URI non è configurato correttamente in Google Cloud Console\n\n` +
+            `Per risolvere:\n` +
+            `1. Vai su Google Cloud Console\n` +
+            `2. OAuth consent screen > Pubblica l'app OPPURE aggiungi la tua email come Test User\n` +
+            `3. Credentials > OAuth 2.0 Client > Aggiungi Redirect URI:\n` +
+            `   • https://fdnurgfcocmgknbmpjtd.supabase.co/auth/v1/callback\n` +
+            `   • chitisomiglia://auth-callback\n\n` +
+            `Vedi SUPABASE_SETUP_INSTRUCTIONS.md per i dettagli completi.`
           );
         }
         
@@ -357,7 +377,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       
       console.log(`[AuthContext] OAuth initiated for ${provider}, waiting for callback...`);
-    } catch (error) {
+    } catch (error: any) {
       console.error(`[AuthContext] ${provider} sign in failed:`, error);
       throw error;
     }

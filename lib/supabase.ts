@@ -59,32 +59,64 @@ export async function uploadImageToSupabase(
 ): Promise<{ url: string; path: string }> {
   try {
     console.log('[Supabase] Uploading image:', uri);
+    console.log('[Supabase] User ID:', userId);
 
     // Generate unique filename
     const timestamp = Date.now();
     const randomId = Math.random().toString(36).substring(7);
-    const extension = uri.split('.').pop() || 'jpg';
+    const extension = uri.split('.').pop()?.split('?')[0] || 'jpg';
     const finalFilename = filename || `${timestamp}_${randomId}.${extension}`;
     const storagePath = `${userId}/${finalFilename}`;
 
+    console.log('[Supabase] Storage path:', storagePath);
+
     // Fetch the image as blob
     const response = await fetch(uri);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
+    }
+    
     const blob = await response.blob();
-
-    console.log('[Supabase] Uploading to path:', storagePath);
     console.log('[Supabase] Blob size:', blob.size, 'bytes');
+    console.log('[Supabase] Blob type:', blob.type);
 
-    // Upload to Supabase Storage
+    // Verify user is authenticated
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      throw new Error('Non autenticato. Effettua nuovamente l\'accesso.');
+    }
+    console.log('[Supabase] User authenticated:', session.user.id);
+
+    // Upload to Supabase Storage with explicit headers
     const { data, error } = await supabase.storage
       .from('comparison-images')
       .upload(storagePath, blob, {
         contentType: blob.type || 'image/jpeg',
         upsert: false,
+        cacheControl: '3600',
       });
 
     if (error) {
-      console.error('[Supabase] Upload error:', error);
-      throw new Error(`Errore durante il caricamento dell'immagine: ${error.message}`);
+      console.error('[Supabase] Upload error details:', {
+        message: error.message,
+        name: error.name,
+        status: (error as any).status,
+        statusCode: (error as any).statusCode,
+      });
+      
+      // Provide user-friendly error messages
+      if (error.message.includes('row-level security') || error.message.includes('policy')) {
+        throw new Error(
+          'Errore di permessi. Le policy di sicurezza del bucket non sono configurate correttamente.\n\n' +
+          'Vai su Supabase Dashboard > Storage > comparison-images > Policies e aggiungi le policy per INSERT, SELECT, UPDATE, DELETE.'
+        );
+      }
+      
+      if (error.message.includes('Bucket not found')) {
+        throw new Error('Il bucket "comparison-images" non esiste. Crealo nella dashboard di Supabase.');
+      }
+      
+      throw new Error(`Errore durante il caricamento: ${error.message}`);
     }
 
     console.log('[Supabase] Upload successful:', data);
@@ -100,7 +132,7 @@ export async function uploadImageToSupabase(
       url: urlData.publicUrl,
       path: storagePath,
     };
-  } catch (error) {
+  } catch (error: any) {
     console.error('[Supabase] Failed to upload image:', error);
     throw error;
   }
