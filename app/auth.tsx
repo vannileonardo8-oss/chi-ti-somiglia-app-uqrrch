@@ -236,21 +236,7 @@ export default function AuthScreen() {
               </Text>
             </TouchableOpacity>
 
-            <View style={styles.infoBox}>
-              <IconSymbol
-                ios_icon_name="info.circle.fill"
-                android_material_icon_name="info"
-                size={16}
-                color={colors.accent}
-              />
-              <Text style={[styles.infoText, { color: colors.textSecondary }]}>
-                Se l&apos;accesso con Google non funziona, consulta il file{" "}
-                <Text style={{ color: colors.accent, fontWeight: "bold" }}>
-                  SUPABASE_SETUP_INSTRUCTIONS.md
-                </Text>{" "}
-                per configurare correttamente Supabase e Google OAuth.
-              </Text>
-            </View>
+
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
