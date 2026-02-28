@@ -235,18 +235,6 @@ export default function AuthScreen() {
                 </Text>
               </Text>
             </TouchableOpacity>
-
-            <View style={[styles.helpBox, { backgroundColor: colors.card, borderColor: colors.accent }]}>
-              <IconSymbol
-                ios_icon_name="info.circle.fill"
-                android_material_icon_name="info"
-                size={16}
-                color={colors.accent}
-              />
-              <Text style={[styles.helpText, { color: colors.textSecondary }]}>
-                Se ricevi un errore 403 con Google, consulta il file SUPABASE_SETUP_INSTRUCTIONS.md per la configurazione completa.
-              </Text>
-            </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -397,21 +385,6 @@ const styles = StyleSheet.create({
   },
   switchAction: {
     fontWeight: "bold",
-  },
-  helpBox: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    padding: 12,
-    borderRadius: 8,
-    marginTop: 24,
-    gap: 8,
-    borderWidth: 1,
-    opacity: 0.9,
-  },
-  helpText: {
-    flex: 1,
-    fontSize: 12,
-    lineHeight: 18,
   },
   modalOverlay: {
     flex: 1,
