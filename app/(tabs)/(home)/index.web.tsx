@@ -110,12 +110,27 @@ export default function HomeScreen() {
   const detectFaces = async (imageUrl: string): Promise<{ faceCount: number; faces: Face[] }> => {
     console.log('[FaceDetection] Detecting faces in image:', imageUrl);
     try {
-      const result = await authenticatedPost('/api/detect-faces', { imageUrl });
+      // Use apiPost directly for public endpoint (no auth required)
+      const response = await fetch(`${BACKEND_URL}/api/detect-faces`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ imageUrl }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[FaceDetection] API error:', response.status, errorText);
+        throw new Error(`Errore nel rilevamento volti: ${response.status}`);
+      }
+
+      const result = await response.json();
       console.log('[FaceDetection] Result:', result);
       return result;
-    } catch (error) {
+    } catch (error: any) {
       console.error('[FaceDetection] Error:', error);
-      throw error;
+      throw new Error(error?.message || 'Errore durante il rilevamento dei volti');
     }
   };
 
@@ -196,7 +211,22 @@ export default function HomeScreen() {
         }
       } catch (error: any) {
         console.error('[FaceDetection] Error:', error);
-        showError('Errore durante il rilevamento dei volti. Riprova.');
+        
+        // Provide specific error messages based on the error type
+        let errorMessage = 'Errore durante il rilevamento dei volti. Riprova.';
+        
+        if (error?.message?.includes('Failed to fetch') || error?.message?.includes('Network')) {
+          errorMessage = 'Errore di connessione. Verifica la tua connessione internet e riprova.';
+        } else if (error?.message?.includes('413') || error?.message?.includes('too large')) {
+          errorMessage = 'L\'immagine è troppo grande. Prova con una foto più piccola.';
+        } else if (error?.message?.includes('timeout')) {
+          errorMessage = 'Il rilevamento volti sta impiegando troppo tempo. Riprova con una foto più piccola.';
+        } else if (error?.message?.includes('500') || error?.message?.includes('502') || error?.message?.includes('503')) {
+          errorMessage = 'Il servizio di rilevamento volti è temporaneamente non disponibile. Riprova tra qualche secondo.';
+        }
+        
+        showError(errorMessage);
+        
         // Clear the stored URL on error
         if (type === 'main') setMainImageUrl(null);
         else if (type === 'compare1') setCompareImage1Url(null);

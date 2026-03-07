@@ -20,6 +20,20 @@ Questa guida ti aiuterà a configurare:
 
 ---
 
+### 🚫 Errore nel Rilevamento Volti
+**Sintomo:** Dopo aver caricato una foto, vedi "Errore durante il rilevamento dei volti" o l'app si blocca durante il rilevamento.
+
+**Causa:** Problema di connessione con il backend AI o immagine troppo grande.
+
+**Soluzione:** 
+1. **Verifica la connessione internet** - Il rilevamento volti richiede una connessione stabile
+2. **Prova con una foto più piccola** - Foto molto grandi (>5MB) possono causare problemi
+3. **Riprova dopo qualche secondo** - A volte il backend AI impiega un po' a rispondere
+4. **Controlla i log dell'app** - Dovrebbero mostrare l'errore specifico
+5. **Se il problema persiste**, l'app è stata aggiornata per gestire meglio gli errori di rete
+
+---
+
 ### 🚫 Errore "new row violates row-level security policy"
 **Sintomo:** Quando carichi una foto, vedi "Errore di permessi. Le policy di sicurezza del bucket non sono configurate correttamente."
 
