@@ -178,7 +178,7 @@ export const authenticatedGet = async <T = any>(endpoint: string): Promise<T> =>
 
 /**
  * Authenticated POST request
- * NOTE: For face detection and comparison, use apiPost instead (no auth required)
+ * NOTE: /api/detect-faces and /api/compare are PUBLIC endpoints (no auth required)
  */
 export const authenticatedPost = async <T = any>(
   endpoint: string,

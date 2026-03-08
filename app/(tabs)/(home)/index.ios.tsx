@@ -20,9 +20,8 @@ import {
   ActivityIndicator,
   Modal,
 } from 'react-native';
-import { BACKEND_URL, authenticatedPost, getBearerToken } from '@/utils/api';
-import { uploadImageToSupabase, saveComparisonToSupabase } from '@/lib/supabase';
-import { supabase } from '@/lib/supabase';
+import { BACKEND_URL, apiPost } from '@/utils/api';
+import { uploadImageToSupabase, saveComparisonToSupabase, supabase } from '@/lib/supabase';
 
 interface ImageData {
   uri: string;
@@ -109,22 +108,8 @@ export default function HomeScreen() {
   const detectFaces = async (imageUrl: string): Promise<{ faceCount: number; faces: Face[] }> => {
     console.log('[FaceDetection] Detecting faces in image:', imageUrl);
     try {
-      // Use apiPost directly for public endpoint (no auth required)
-      const response = await fetch(`${BACKEND_URL}/api/detect-faces`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ imageUrl }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[FaceDetection] API error:', response.status, errorText);
-        throw new Error(`Errore nel rilevamento volti: ${response.status}`);
-      }
-
-      const result = await response.json();
+      // Use apiPost for public endpoint (no auth required)
+      const result = await apiPost('/api/detect-faces', { imageUrl });
       console.log('[FaceDetection] Result:', result);
       return result;
     } catch (error: any) {
@@ -335,8 +320,8 @@ export default function HomeScreen() {
       console.log('[Analysis] Compare1:', resolvedCompare1Url);
       console.log('[Analysis] Compare2:', resolvedCompare2Url);
       
-      console.log('[Analysis] Requesting AI comparison from backend...');
-      const result = await authenticatedPost('/api/compare', {
+      console.log('[Analysis] Requesting AI comparison from backend (public endpoint)...');
+      const result = await apiPost('/api/compare', {
         mainImageUrl: resolvedMainUrl,
         mainImageLabel: mainImage.label || 'Principale',
         compareImage1Url: resolvedCompare1Url,
