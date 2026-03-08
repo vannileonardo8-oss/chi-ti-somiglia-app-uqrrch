@@ -43,6 +43,25 @@ Questa guida ti aiuterà a configurare:
 
 ---
 
+### ℹ️ Nota sul Percorso OAuth Consent
+
+**Domanda:** Supabase mostra "URL di autorizzazione dell'anteprima: http://localhost:3000/oauth/consent" - devo implementare questa schermata?
+
+**Risposta:** **NO, non è necessario.** Questa app utilizza il flusso OAuth automatico di Supabase, che gestisce il consenso OAuth internamente. Il percorso `/oauth/consent` è stato creato come placeholder per evitare errori 404, ma **non viene mai utilizzato** durante il normale flusso di autenticazione.
+
+**Come funziona l'OAuth in questa app:**
+1. L'utente clicca "Continua con Google"
+2. Supabase reindirizza automaticamente a Google per l'autenticazione
+3. Google gestisce il consenso OAuth (schermata "Consenti accesso")
+4. Google reindirizza a `/auth-callback` (NON a `/oauth/consent`)
+5. L'app completa l'autenticazione
+
+**Il percorso corretto per i redirect OAuth è:**
+- **Web:** `https://fdnurgfcocmgknbmpjtd.supabase.co/auth/v1/callback`
+- **Mobile:** `chitisomiglia://auth-callback`
+
+---
+
 ## 1️⃣ CONFIGURAZIONE GOOGLE OAUTH
 
 ### Passo 1.1: Google Cloud Console - Creare Credenziali OAuth
@@ -73,8 +92,9 @@ chitisomiglia://auth-callback
 
 **⚠️ IMPORTANTE:**
 - Copia e incolla esattamente come scritto sopra (senza spazi o caratteri extra)
-- Il primo URI è per il web
+- Il primo URI è per il web (Supabase gestisce il redirect automaticamente)
 - Il secondo URI è per l'app mobile (iOS/Android)
+- **NON aggiungere** `/oauth/consent` - non è necessario per questa app
 - Clicca **SAVE** dopo aver aggiunto entrambi
 
 ### Passo 1.3: Google Cloud Console - OAuth Consent Screen
@@ -132,6 +152,8 @@ chitisomiglia://auth-callback
 1. Nella stessa sezione Google, dovresti vedere un campo **Callback URL (for OAuth)** (in sola lettura)
 2. Verifica che sia: `https://fdnurgfcocmgknbmpjtd.supabase.co/auth/v1/callback`
 3. Questo URL DEVE corrispondere esattamente a quello che hai inserito in Google Cloud Console al Passo 1.2
+
+**ℹ️ Nota:** Potresti vedere anche un campo "Authorization URL" che mostra `/oauth/consent`. Questo è un placeholder e non viene utilizzato da questa app. L'autenticazione OAuth funziona correttamente tramite il Callback URL sopra.
 
 ---
 
@@ -387,6 +409,15 @@ Prima di testare l'app, verifica che TUTTI questi punti siano completati:
 
 ---
 
+### Problema: Vedo "/oauth/consent" in Supabase
+**Soluzione:**
+- Questo è normale e non causa problemi
+- Il percorso `/oauth/consent` esiste nell'app come placeholder
+- L'autenticazione OAuth funziona correttamente tramite `/auth-callback`
+- Non è necessario configurare nulla per questo percorso
+
+---
+
 ## 📞 SUPPORTO
 
 Se dopo aver seguito TUTTI i passaggi sopra continui ad avere problemi:
@@ -417,3 +448,4 @@ Buon divertimento con "Chi ti somiglia?"! 🤔👥✨
 - **Supabase Storage Documentation:** https://supabase.com/docs/guides/storage
 - **Supabase RLS Documentation:** https://supabase.com/docs/guides/auth/row-level-security
 - **Google OAuth Documentation:** https://developers.google.com/identity/protocols/oauth2
+- **Supabase OAuth Documentation:** https://supabase.com/docs/guides/auth/social-login
