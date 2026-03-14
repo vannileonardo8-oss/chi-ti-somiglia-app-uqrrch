@@ -1,8 +1,8 @@
+
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
 import { BEARER_TOKEN_KEY } from "@/lib/auth";
-import { supabase } from "@/lib/supabase";
 
 export const BACKEND_URL =
   Constants.expoConfig?.extra?.backendUrl ||
@@ -11,6 +11,10 @@ export const BACKEND_URL =
 // Supabase Edge Functions base URL
 const SUPABASE_URL = "https://fdnurgfcocmgknbmpjtd.supabase.co";
 export const SUPABASE_FUNCTIONS_URL = `${SUPABASE_URL}/functions/v1`;
+
+// Supabase anon key — used as Bearer token for edge function calls
+const SUPABASE_ANON_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZkbnVyZ2Zjb2NtZ2tuYm1wanRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE3OTE5ODgsImV4cCI6MjA4NzM2Nzk4OH0.D1IbWjRau2GFOcHVBC6cJ80LxvRgct7X2r0BRA1Gr20";
 
 export const getBearerToken = async (): Promise<string | null> => {
   try {
@@ -21,17 +25,6 @@ export const getBearerToken = async (): Promise<string | null> => {
     }
   } catch (error) {
     console.error("[API] Error retrieving bearer token:", error);
-    return null;
-  }
-};
-
-/** Get the current Supabase session access token for edge function auth */
-export const getSupabaseAccessToken = async (): Promise<string | null> => {
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    return session?.access_token ?? null;
-  } catch (error) {
-    console.error("[API] Error retrieving Supabase access token:", error);
     return null;
   }
 };
@@ -115,7 +108,9 @@ export const authenticatedDelete = <T = any>(
 
 // ---------------------------------------------------------------------------
 // Supabase Edge Function helpers
-// These use the Supabase session JWT (not the Specular bearer token)
+// Uses the Supabase anon key as Bearer token — works without Supabase auth.
+// The edge functions identify the user via the Better Auth session cookie/header
+// passed separately, or operate in anonymous mode.
 // ---------------------------------------------------------------------------
 
 const edgeFunctionCall = async <T = any>(
@@ -129,6 +124,7 @@ const edgeFunctionCall = async <T = any>(
     ...options,
     headers: {
       "Content-Type": "application/json",
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
       ...options?.headers,
     },
   });
@@ -142,55 +138,41 @@ const edgeFunctionCall = async <T = any>(
   return response.json();
 };
 
-const authenticatedEdgeCall = async <T = any>(
-  fnName: string,
-  options?: RequestInit
-): Promise<T> => {
-  const token = await getSupabaseAccessToken();
-  if (!token) {
-    throw new Error("Not authenticated. Please sign in.");
-  }
-  return edgeFunctionCall<T>(fnName, {
-    ...options,
-    headers: {
-      ...options?.headers,
-      Authorization: `Bearer ${token}`,
-    },
+/**
+ * POST /functions/v1/compare
+ * Analyze a face image and return celebrity lookalikes.
+ * Sends { image_base64: string } with the Supabase anon key.
+ */
+export const compareFace = (image_base64: string) => {
+  console.log("[Edge] Calling compare edge function with base64 image");
+  return edgeFunctionCall<{
+    matches?: { name: string; similarity: number; description: string }[];
+    winner?: number;
+    winnerSimilarity?: number;
+    loserSimilarity?: number;
+    reasons?: { feature: string; description: string; similarity?: number }[];
+    summary?: string;
+  }>("compare", { method: "POST", body: JSON.stringify({ image_base64 }) });
+};
+
+/**
+ * GET /functions/v1/comparisons
+ * Fetch the user's comparison history.
+ */
+export const getComparisons = () => {
+  console.log("[Edge] Fetching comparison history");
+  return edgeFunctionCall<{ comparisons: any[] }>("comparisons", {
+    method: "GET",
   });
 };
 
 /**
- * POST /functions/v1/compare
- * Analyze a face image with Gemini and return celebrity lookalikes.
- */
-export const compareface = (image_base64: string) =>
-  edgeFunctionCall<{ matches: { name: string; similarity: number; description: string }[] }>(
-    "compare",
-    { method: "POST", body: JSON.stringify({ image_base64 }) }
-  );
-
-/**
- * GET /functions/v1/comparisons
- * Fetch the authenticated user's comparison history.
- */
-export const getComparisons = () =>
-  authenticatedEdgeCall<{ comparisons: any[] }>("comparisons", { method: "GET" });
-
-/**
- * POST /functions/v1/comparisons
- * Save a comparison result for the authenticated user.
- */
-export const saveComparison = (data: { image_url?: string; result?: any }) =>
-  authenticatedEdgeCall<{ comparison: any }>("comparisons", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-
-/**
  * DELETE /functions/v1/comparisons/:id
- * Delete a comparison (ownership enforced server-side).
+ * Delete a comparison.
  */
-export const deleteComparison = (id: string) =>
-  authenticatedEdgeCall<{ success: boolean }>(`comparisons/${id}`, {
+export const deleteComparison = (id: string) => {
+  console.log("[Edge] Deleting comparison:", id);
+  return edgeFunctionCall<{ success: boolean }>(`comparisons/${id}`, {
     method: "DELETE",
   });
+};

@@ -1,5 +1,5 @@
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   View,
@@ -16,12 +16,11 @@ import {
 import { useRouter } from "expo-router";
 import { colors } from "@/styles/commonStyles";
 import { LinearGradient } from "expo-linear-gradient";
-import { IconSymbol } from "@/components/IconSymbol";
 
 type Mode = "signin" | "signup";
 
 export default function AuthScreen() {
-  const { signInWithEmail, signUpWithEmail, signInWithGoogle } = useAuth();
+  const { signInWithEmail, signUpWithEmail, signInWithGoogle, user } = useAuth();
   const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -33,14 +32,22 @@ export default function AuthScreen() {
   });
   const router = useRouter();
 
+  // Navigate after successful login — let AuthGuard handle it
+  useEffect(() => {
+    if (user) {
+      console.log("[Auth] User logged in, navigating to home");
+      router.replace("/(tabs)/(home)");
+    }
+  }, [user]);
+
   const showError = (message: string) => {
     console.log("[Auth] Showing error:", message);
     setErrorModal({ visible: true, message });
   };
 
   const handleEmailAuth = async () => {
-    console.log(`[Auth] Starting ${mode} with email:`, email);
-    
+    console.log(`[Auth] User tapped ${mode} button with email:`, email);
+
     if (!email || !password) {
       showError("Inserisci email e password.");
       return;
@@ -55,13 +62,12 @@ export default function AuthScreen() {
     try {
       if (mode === "signin") {
         await signInWithEmail(email, password);
-        console.log("[Auth] Email auth successful, navigating to home");
-        router.replace("/(tabs)/(home)");
+        console.log("[Auth] Email sign-in successful");
       } else {
         await signUpWithEmail(email, password, name);
-        console.log("[Auth] Email signup successful, navigating to home");
-        router.replace("/(tabs)/(home)");
+        console.log("[Auth] Email sign-up successful");
       }
+      // Navigation handled by useEffect above
     } catch (error: any) {
       console.error("[Auth] Email auth error:", error);
       showError(error?.message || "Si è verificato un errore. Riprova.");
@@ -70,18 +76,16 @@ export default function AuthScreen() {
     }
   };
 
-  const handleSocialAuth = async (provider: "google" | "apple" | "github") => {
-    console.log(`[Auth] Starting ${provider} auth`);
+  const handleGoogleAuth = async () => {
+    console.log("[Auth] User tapped Google sign-in button");
     setLoading(true);
     try {
-      if (provider === "google") {
-        await signInWithGoogle();
-      }
-      // Apple and GitHub would be similar
-      console.log(`[Auth] ${provider} auth initiated`);
+      await signInWithGoogle();
+      console.log("[Auth] Google auth initiated");
+      // Navigation handled by useEffect above
     } catch (error: any) {
-      console.error(`[Auth] ${provider} auth error:`, error);
-      showError(error?.message || `Errore durante l'accesso con ${provider}. Riprova.`);
+      console.error("[Auth] Google auth error:", error);
+      showError(error?.message || "Errore durante l'accesso con Google. Riprova.");
       setLoading(false);
     }
   };
@@ -121,67 +125,40 @@ export default function AuthScreen() {
 
           <View style={styles.form}>
             {!isSignIn && (
-              <View style={styles.inputContainer}>
-                <IconSymbol
-                  ios_icon_name="person.fill"
-                  android_material_icon_name="person"
-                  size={20}
-                  color={colors.textSecondary}
-                  style={styles.inputIcon}
-                />
-                <TextInput
-                  style={[styles.input, { color: colors.text }]}
-                  placeholder="Nome"
-                  placeholderTextColor={colors.textSecondary}
-                  value={name}
-                  onChangeText={setName}
-                  autoCapitalize="words"
-                  editable={!loading}
-                />
-              </View>
+              <TextInput
+                style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+                placeholder="Nome"
+                placeholderTextColor={colors.textSecondary}
+                value={name}
+                onChangeText={setName}
+                autoCapitalize="words"
+                editable={!loading}
+              />
             )}
 
-            <View style={styles.inputContainer}>
-              <IconSymbol
-                ios_icon_name="envelope.fill"
-                android_material_icon_name="email"
-                size={20}
-                color={colors.textSecondary}
-                style={styles.inputIcon}
-              />
-              <TextInput
-                style={[styles.input, { color: colors.text }]}
-                placeholder="Email"
-                placeholderTextColor={colors.textSecondary}
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoComplete="email"
-                editable={!loading}
-              />
-            </View>
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+              placeholder="Email"
+              placeholderTextColor={colors.textSecondary}
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoComplete="email"
+              editable={!loading}
+            />
 
-            <View style={styles.inputContainer}>
-              <IconSymbol
-                ios_icon_name="lock.fill"
-                android_material_icon_name="lock"
-                size={20}
-                color={colors.textSecondary}
-                style={styles.inputIcon}
-              />
-              <TextInput
-                style={[styles.input, { color: colors.text }]}
-                placeholder="Password"
-                placeholderTextColor={colors.textSecondary}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry
-                autoCapitalize="none"
-                autoComplete="password"
-                editable={!loading}
-              />
-            </View>
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+              placeholder="Password"
+              placeholderTextColor={colors.textSecondary}
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              autoCapitalize="none"
+              autoComplete="password"
+              editable={!loading}
+            />
 
             <TouchableOpacity
               style={styles.primaryButton}
@@ -198,9 +175,7 @@ export default function AuthScreen() {
                 {loading ? (
                   <ActivityIndicator color={colors.background} />
                 ) : (
-                  <Text style={[styles.buttonText, { color: colors.background }]}>
-                    {modeText}
-                  </Text>
+                  <Text style={[styles.buttonText, { color: colors.background }]}>{modeText}</Text>
                 )}
               </LinearGradient>
             </TouchableOpacity>
@@ -213,7 +188,7 @@ export default function AuthScreen() {
 
             <TouchableOpacity
               style={[styles.socialButton, { backgroundColor: colors.card }]}
-              onPress={() => handleSocialAuth("google")}
+              onPress={handleGoogleAuth}
               disabled={loading}
               activeOpacity={0.8}
             >
@@ -225,7 +200,10 @@ export default function AuthScreen() {
 
             <TouchableOpacity
               style={styles.switchButton}
-              onPress={() => setMode(isSignIn ? "signup" : "signin")}
+              onPress={() => {
+                console.log('[Auth] User toggled mode to:', isSignIn ? 'signup' : 'signin');
+                setMode(isSignIn ? "signup" : "signin");
+              }}
               disabled={loading}
             >
               <Text style={[styles.switchText, { color: colors.textSecondary }]}>
@@ -250,11 +228,9 @@ export default function AuthScreen() {
           <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
             <Text style={styles.modalEmoji}>⚠️</Text>
             <Text style={[styles.modalTitle, { color: colors.text }]}>Attenzione</Text>
-            <ScrollView style={styles.modalMessageScroll}>
-              <Text style={[styles.modalMessage, { color: colors.textSecondary }]}>
-                {errorModal.message}
-              </Text>
-            </ScrollView>
+            <Text style={[styles.modalMessage, { color: colors.textSecondary }]}>
+              {errorModal.message}
+            </Text>
             <TouchableOpacity
               style={[styles.modalButton, { backgroundColor: colors.secondary }]}
               onPress={() => setErrorModal({ visible: false, message: "" })}
@@ -269,61 +245,22 @@ export default function AuthScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  keyboardView: {
-    flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    justifyContent: "center",
-    padding: 24,
-  },
-  header: {
-    alignItems: "center",
-    marginBottom: 40,
-  },
-  emojiRow: {
-    flexDirection: "row",
-    gap: 12,
-    marginBottom: 16,
-  },
-  emoji: {
-    fontSize: 40,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: "bold",
-    marginBottom: 8,
-    textAlign: "center",
-  },
-  subtitle: {
-    fontSize: 18,
-    textAlign: "center",
-  },
-  form: {
-    width: "100%",
-    maxWidth: 400,
-    alignSelf: "center",
-  },
-  inputContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: colors.card,
+  container: { flex: 1 },
+  keyboardView: { flex: 1 },
+  scrollContent: { flexGrow: 1, justifyContent: "center", padding: 24 },
+  header: { alignItems: "center", marginBottom: 40 },
+  emojiRow: { flexDirection: "row", gap: 12, marginBottom: 16 },
+  emoji: { fontSize: 40 },
+  title: { fontSize: 32, fontWeight: "bold", marginBottom: 8, textAlign: "center" },
+  subtitle: { fontSize: 18, textAlign: "center" },
+  form: { width: "100%", maxWidth: 400, alignSelf: "center" },
+  input: {
     borderRadius: 12,
     marginBottom: 16,
     paddingHorizontal: 16,
-    borderWidth: 2,
-    borderColor: "transparent",
-  },
-  inputIcon: {
-    marginRight: 12,
-  },
-  input: {
-    flex: 1,
     paddingVertical: 16,
     fontSize: 16,
+    borderWidth: 2,
   },
   primaryButton: {
     borderRadius: 12,
@@ -335,29 +272,11 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
   },
-  buttonGradient: {
-    paddingVertical: 16,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  buttonText: {
-    fontSize: 18,
-    fontWeight: "bold",
-  },
-  divider: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginVertical: 24,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    opacity: 0.3,
-  },
-  dividerText: {
-    marginHorizontal: 16,
-    fontSize: 14,
-  },
+  buttonGradient: { paddingVertical: 16, alignItems: "center", justifyContent: "center" },
+  buttonText: { fontSize: 18, fontWeight: "bold" },
+  divider: { flexDirection: "row", alignItems: "center", marginVertical: 24 },
+  dividerLine: { flex: 1, height: 1, opacity: 0.3 },
+  dividerText: { marginHorizontal: 16, fontSize: 14 },
   socialButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -367,25 +286,11 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     gap: 12,
   },
-  googleIcon: {
-    fontSize: 20,
-    fontWeight: "bold",
-  },
-  socialButtonText: {
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  switchButton: {
-    alignItems: "center",
-    marginTop: 16,
-    paddingVertical: 8,
-  },
-  switchText: {
-    fontSize: 14,
-  },
-  switchAction: {
-    fontWeight: "bold",
-  },
+  googleIcon: { fontSize: 20, fontWeight: "bold", color: '#4285F4' },
+  socialButtonText: { fontSize: 16, fontWeight: "600" },
+  switchButton: { alignItems: "center", marginTop: 16, paddingVertical: 8 },
+  switchText: { fontSize: 14 },
+  switchAction: { fontWeight: "bold" },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.7)",
@@ -393,42 +298,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 20,
   },
-  modalContent: {
-    borderRadius: 20,
-    padding: 24,
-    width: "100%",
-    maxWidth: 500,
-    maxHeight: "80%",
-    alignItems: "center",
-  },
-  modalEmoji: {
-    fontSize: 48,
-    marginBottom: 12,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
-    marginBottom: 12,
-  },
-  modalMessageScroll: {
-    maxHeight: 300,
-    width: "100%",
-  },
-  modalMessage: {
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 24,
-  },
-  modalButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 32,
-    borderRadius: 12,
-    minWidth: 100,
-    marginTop: 12,
-  },
-  modalButtonText: {
-    fontSize: 16,
-    fontWeight: "bold",
-    textAlign: "center",
-  },
+  modalContent: { borderRadius: 20, padding: 24, width: "100%", maxWidth: 400, alignItems: "center" },
+  modalEmoji: { fontSize: 48, marginBottom: 12 },
+  modalTitle: { fontSize: 20, fontWeight: "bold", marginBottom: 12 },
+  modalMessage: { fontSize: 14, lineHeight: 20, marginBottom: 24, textAlign: "center" },
+  modalButton: { paddingVertical: 12, paddingHorizontal: 32, borderRadius: 12, minWidth: 100 },
+  modalButtonText: { fontSize: 16, fontWeight: "bold", textAlign: "center" },
 });
