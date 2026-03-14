@@ -20,7 +20,7 @@ import * as Sharing from 'expo-sharing';
 import * as Haptics from 'expo-haptics';
 import ViewShot from 'react-native-view-shot';
 import { useAuth } from '@/contexts/AuthContext';
-import { fetchComparisonById, supabase } from '@/lib/supabase';
+import { fetchComparisonById } from '@/lib/supabase';
 
 interface Reason {
   feature: string;
@@ -80,19 +80,15 @@ export default function ResultsScreen() {
     try {
       setLoading(true);
       console.log('[Results] Loading comparison:', id);
-      
-      // Get Supabase user ID
-      const { data: { session } } = await supabase.auth.getSession();
-      const supabaseUserId = session?.user?.id;
-      
-      if (!supabaseUserId) {
-        console.error('[Results] No Supabase user logged in');
+
+      if (!user?.id) {
+        console.error('[Results] No user logged in');
         showError('Devi effettuare l\'accesso per visualizzare i risultati');
         setLoading(false);
         return;
       }
-      
-      const data = await fetchComparisonById(id as string, supabaseUserId);
+
+      const data = await fetchComparisonById(id as string, user.id);
       
       console.log('[Results] Loaded comparison data');
       setResult(data);

@@ -13,6 +13,7 @@ import {
   ThemeProvider,
 } from "@react-navigation/native";
 import { StatusBar } from "expo-status-bar";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import { WidgetProvider } from "@/contexts/WidgetContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 
@@ -36,11 +37,12 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     const inAuthGroup =
       segments[0] === "auth" ||
       segments[0] === "auth-popup" ||
-      segments[0] === "auth-callback";
+      segments[0] === "auth-callback" ||
+      segments[0] === "oauth";
 
     if (!user && !inAuthGroup) {
       router.replace("/auth");
-    } else if (user && inAuthGroup) {
+    } else if (user && (segments[0] === "auth")) {
       router.replace("/(tabs)/(home)");
     }
   }, [user, loading, segments, router]);
@@ -98,19 +100,20 @@ export default function RootLayout() {
   };
 
   return (
-    <>
+    <SafeAreaProvider>
       <StatusBar style="auto" animated />
       <ThemeProvider value={colorScheme === "dark" ? CustomDarkTheme : CustomDefaultTheme}>
         <AuthProvider>
           <AuthGuard>
             <WidgetProvider>
-              <GestureHandlerRootView>
+              <GestureHandlerRootView style={{ flex: 1 }}>
                 <Stack>
                   <Stack.Screen name="auth" options={{ headerShown: false }} />
                   <Stack.Screen name="auth-popup" options={{ headerShown: false }} />
                   <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
                   <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
                   <Stack.Screen name="results/[id]" options={{ headerShown: false }} />
+                  <Stack.Screen name="oauth/consent" options={{ headerShown: false }} />
                   <Stack.Screen name="+not-found" options={{ title: "Oops!" }} />
                 </Stack>
                 <SystemBars style={"auto"} />
@@ -119,6 +122,6 @@ export default function RootLayout() {
           </AuthGuard>
         </AuthProvider>
       </ThemeProvider>
-    </>
+    </SafeAreaProvider>
   );
 }

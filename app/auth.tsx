@@ -32,11 +32,11 @@ export default function AuthScreen() {
   });
   const router = useRouter();
 
-  // Navigate after successful login — let AuthGuard handle it
+  // AuthGuard in _layout.tsx handles navigation away from auth screen.
+  // We only need to react here if somehow we're still on auth while logged in.
   useEffect(() => {
     if (user) {
-      console.log("[Auth] User logged in, navigating to home");
-      router.replace("/(tabs)/(home)");
+      console.log("[Auth] User already logged in, AuthGuard will redirect");
     }
   }, [user]);
 
