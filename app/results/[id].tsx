@@ -114,7 +114,7 @@ export default function ResultsScreen() {
 
   const handleShare = async () => {
     if (!user) {
-      showError('Devi effettuare l&apos;accesso per condividere i risultati');
+      showError("Devi effettuare l'accesso per condividere i risultati");
       return;
     }
 

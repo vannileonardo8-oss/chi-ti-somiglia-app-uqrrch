@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { IconSymbol } from '@/components/IconSymbol';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -79,13 +79,13 @@ export default function HomeScreen() {
         return manipResult.base64;
       }
       const base64 = await FileSystem.readAsStringAsync(manipResult.uri, {
-        encoding: 'base64',
+        encoding: FileSystem.EncodingType.Base64,
       });
       return base64;
     } catch (error) {
       console.error('[Home] Compression failed:', error);
       const base64 = await FileSystem.readAsStringAsync(uri, {
-        encoding: 'base64',
+        encoding: FileSystem.EncodingType.Base64,
       });
       return base64;
     }
