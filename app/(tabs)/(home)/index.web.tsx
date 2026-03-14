@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
 import { Stack } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
-import { Camera, ImageIcon, Trophy, ChevronRight } from 'lucide-react-native';
+import { Trophy, ChevronRight, ImageIcon, Camera } from 'lucide-react-native';
 import {
   View,
   Text,
@@ -17,9 +17,13 @@ import {
   Image,
   ActivityIndicator,
   Modal,
+  TextInput,
   ImageSourcePropType,
 } from 'react-native';
 import { comparePhotos, saveComparison } from '@/utils/api';
+import { FaceSelector } from '@/components/FaceSelector';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface CompareResult {
   winner: number;
@@ -27,6 +31,21 @@ interface CompareResult {
   similarity_2: number;
   explanation: string;
 }
+
+interface FaceBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface PendingFaceSelection {
+  slotKey: 'main' | 'comp1' | 'comp2';
+  uri: string;
+  faces: FaceBox[];
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function resolveImageSource(source: string | undefined): ImageSourcePropType {
   if (!source) return { uri: '' };
@@ -64,55 +83,233 @@ async function compressAndEncode(uri: string): Promise<string> {
 }
 
 async function pickFromGallery(): Promise<string | null> {
+  console.log('[Home] Requesting media library permission');
   const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-  if (!perm.granted) return null;
+  if (!perm.granted) {
+    console.log('[Home] Media library permission denied');
+    return null;
+  }
   const result = await ImagePicker.launchImageLibraryAsync({
     mediaTypes: ['images'],
-    allowsEditing: true,
-    aspect: [3, 4],
-    quality: 0.8,
+    allowsEditing: false,
+    quality: 0.9,
   });
-  if (!result.canceled && result.assets[0]) return result.assets[0].uri;
+  if (!result.canceled && result.assets[0]) {
+    console.log('[Home] Image picked from gallery:', result.assets[0].uri);
+    return result.assets[0].uri;
+  }
   return null;
 }
 
 async function pickFromCamera(): Promise<string | null> {
+  console.log('[Home] Requesting camera permission');
   const perm = await ImagePicker.requestCameraPermissionsAsync();
-  if (!perm.granted) return null;
+  if (!perm.granted) {
+    console.log('[Home] Camera permission denied');
+    return null;
+  }
   const result = await ImagePicker.launchCameraAsync({
-    allowsEditing: true,
-    aspect: [3, 4],
-    quality: 0.8,
+    allowsEditing: false,
+    quality: 0.9,
   });
-  if (!result.canceled && result.assets[0]) return result.assets[0].uri;
+  if (!result.canceled && result.assets[0]) {
+    console.log('[Home] Photo taken from camera:', result.assets[0].uri);
+    return result.assets[0].uri;
+  }
   return null;
 }
 
-// ─── Photo Slot ──────────────────────────────────────────────────────────────
+async function detectFacesViaGemini(uri: string): Promise<FaceBox[]> {
+  console.log('[Home] Detecting faces via Gemini for:', uri);
+  try {
+    const base64 = await compressAndEncode(uri);
+    const SUPABASE_URL = 'https://fdnurgfcocmgknbmpjtd.supabase.co';
+    const ANON_KEY =
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZkbnVyZ2Zjb2NtZ2tuYm1wanRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE3OTE5ODgsImV4cCI6MjA4NzM2Nzk4OH0.D1IbWjRau2GFOcHVBC6cJ80LxvRgct7X2r0BRA1Gr20';
 
-interface PhotoSlotProps {
-  label: string;
-  uri: string | null;
+    console.log('[Home] Sending face-detect request to edge function');
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/detect-faces`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${ANON_KEY}`,
+      },
+      body: JSON.stringify({ image_base64: base64 }),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      console.log('[Home] Face detection result:', data);
+      if (Array.isArray(data.faces) && data.faces.length > 0) {
+        return data.faces as FaceBox[];
+      }
+    } else {
+      console.warn('[Home] Face detection endpoint not available, status:', response.status);
+    }
+  } catch (err) {
+    console.warn('[Home] Face detection failed:', err);
+  }
+  return [{ x: 5, y: 5, width: 90, height: 90 }];
+}
+
+async function cropToFace(uri: string, face: FaceBox): Promise<string> {
+  console.log('[Home] Cropping image to face:', face);
+  try {
+    const info = await ImageManipulator.manipulateAsync(uri, [], {
+      format: ImageManipulator.SaveFormat.JPEG,
+    });
+    const imgWidth = info.width;
+    const imgHeight = info.height;
+    const originX = Math.round((face.x / 100) * imgWidth);
+    const originY = Math.round((face.y / 100) * imgHeight);
+    const cropWidth = Math.round((face.width / 100) * imgWidth);
+    const cropHeight = Math.round((face.height / 100) * imgHeight);
+    const cropped = await ImageManipulator.manipulateAsync(
+      uri,
+      [{ crop: { originX, originY, width: cropWidth, height: cropHeight } }],
+      { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG }
+    );
+    console.log('[Home] Cropped face URI:', cropped.uri);
+    return cropped.uri;
+  } catch (err) {
+    console.warn('[Home] Crop failed, using original:', err);
+    return uri;
+  }
+}
+
+// ─── Source Picker Modal ──────────────────────────────────────────────────────
+
+interface SourcePickerModalProps {
+  visible: boolean;
   onGallery: () => void;
   onCamera: () => void;
+  onCancel: () => void;
+}
+
+function SourcePickerModal({ visible, onGallery, onCamera, onCancel }: SourcePickerModalProps) {
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onCancel}>
+      <TouchableOpacity style={pickerStyles.overlay} activeOpacity={1} onPress={onCancel}>
+        <View style={pickerStyles.sheet}>
+          <View style={pickerStyles.handle} />
+          <Text style={pickerStyles.title}>Aggiungi foto</Text>
+          <TouchableOpacity style={pickerStyles.option} onPress={onGallery} activeOpacity={0.8}>
+            <ImageIcon size={22} color={colors.secondary} />
+            <Text style={pickerStyles.optionText}>Scegli dalla Galleria</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={pickerStyles.option} onPress={onCamera} activeOpacity={0.8}>
+            <Camera size={22} color={colors.accent} />
+            <Text style={pickerStyles.optionText}>Scatta una Foto</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={pickerStyles.cancelBtn} onPress={onCancel} activeOpacity={0.8}>
+            <Text style={pickerStyles.cancelText}>Annulla</Text>
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+}
+
+const pickerStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    backgroundColor: colors.card,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    paddingBottom: 36,
+    gap: 4,
+  },
+  handle: {
+    width: 40,
+    height: 4,
+    backgroundColor: colors.border,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 16,
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.text,
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  option: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: colors.cardDark,
+    marginBottom: 8,
+  },
+  optionText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  cancelBtn: {
+    marginTop: 4,
+    paddingVertical: 14,
+    borderRadius: 14,
+    alignItems: 'center',
+    backgroundColor: colors.cardDark,
+  },
+  cancelText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+});
+
+// ─── Photo Slot ───────────────────────────────────────────────────────────────
+
+interface PhotoSlotProps {
+  slotLabel: string;
+  uri: string | null;
+  name: string;
+  onNameChange: (v: string) => void;
+  onPress: () => void;
   disabled: boolean;
   isWinner?: boolean;
   similarity?: number | null;
 }
 
-function PhotoSlot({ label, uri, onGallery, onCamera, disabled, isWinner, similarity }: PhotoSlotProps) {
+function PhotoSlot({
+  slotLabel,
+  uri,
+  name,
+  onNameChange,
+  onPress,
+  disabled,
+  isWinner,
+  similarity,
+}: PhotoSlotProps) {
   const imageSource = resolveImageSource(uri ?? undefined);
   const winnerBorder = isWinner === true;
   const loserBorder = isWinner === false;
-  const borderColor = winnerBorder ? colors.success : loserBorder ? colors.error : colors.border;
+  const slotBorderColor = winnerBorder
+    ? colors.success
+    : loserBorder
+    ? colors.error
+    : colors.secondary;
   const similarityText = similarity != null ? `${Number(similarity).toFixed(0)}%` : null;
 
   return (
     <View style={styles.slotWrapper}>
-      <Text style={styles.slotLabel}>{label}</Text>
+      <Text style={styles.slotLabel}>{slotLabel}</Text>
       <TouchableOpacity
-        style={[styles.slotCard, { borderColor }]}
-        onPress={onGallery}
+        style={[styles.slotCard, { borderColor: slotBorderColor }]}
+        onPress={() => {
+          console.log('[Home] User tapped photo slot:', slotLabel);
+          onPress();
+        }}
         activeOpacity={0.8}
         disabled={disabled}
       >
@@ -126,43 +323,43 @@ function PhotoSlot({ label, uri, onGallery, onCamera, disabled, isWinner, simila
               </View>
             )}
             {similarityText && (
-              <View style={[styles.similarityBadge, { backgroundColor: winnerBorder ? colors.success : colors.error }]}>
+              <View
+                style={[
+                  styles.similarityBadge,
+                  { backgroundColor: winnerBorder ? colors.success : colors.error },
+                ]}
+              >
                 <Text style={styles.similarityBadgeText}>{similarityText}</Text>
               </View>
             )}
+            <View style={styles.editOverlay}>
+              <Camera size={18} color="#fff" />
+            </View>
           </>
         ) : (
           <View style={styles.slotPlaceholder}>
-            <ImageIcon size={36} color={colors.textSecondary} />
+            <ImageIcon size={36} color={colors.secondary} />
             <Text style={styles.slotPlaceholderText}>Tocca per aggiungere</Text>
           </View>
         )}
       </TouchableOpacity>
-      <View style={styles.slotButtons}>
-        <TouchableOpacity
-          style={[styles.slotBtn, { borderColor: colors.secondary }]}
-          onPress={onGallery}
-          disabled={disabled}
-          activeOpacity={0.8}
-        >
-          <ImageIcon size={16} color={colors.secondary} />
-          <Text style={[styles.slotBtnText, { color: colors.text }]}>Galleria</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.slotBtn, { borderColor: colors.accent }]}
-          onPress={onCamera}
-          disabled={disabled}
-          activeOpacity={0.8}
-        >
-          <Camera size={16} color={colors.accent} />
-          <Text style={[styles.slotBtnText, { color: colors.text }]}>Fotocamera</Text>
-        </TouchableOpacity>
-      </View>
+      <TextInput
+        style={styles.nameInput}
+        value={name}
+        onChangeText={(v) => {
+          console.log('[Home] Name input changed for slot', slotLabel, ':', v);
+          onNameChange(v);
+        }}
+        placeholder="Nome (es. Mamma)"
+        placeholderTextColor={colors.textSecondary}
+        editable={!disabled}
+        maxLength={30}
+      />
     </View>
   );
 }
 
-// ─── Main Screen ─────────────────────────────────────────────────────────────
+// ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function HomeScreen() {
   const { signOut } = useAuth();
@@ -170,12 +367,88 @@ export default function HomeScreen() {
   const [mainUri, setMainUri] = useState<string | null>(null);
   const [comp1Uri, setComp1Uri] = useState<string | null>(null);
   const [comp2Uri, setComp2Uri] = useState<string | null>(null);
+
+  const [mainName, setMainName] = useState('');
+  const [comp1Name, setComp1Name] = useState('');
+  const [comp2Name, setComp2Name] = useState('');
+
+  const [pickerModal, setPickerModal] = useState<{
+    visible: boolean;
+    slotKey: 'main' | 'comp1' | 'comp2';
+  }>({ visible: false, slotKey: 'main' });
+
+  const [pendingFace, setPendingFace] = useState<PendingFaceSelection | null>(null);
+  const [detectingFaces, setDetectingFaces] = useState(false);
+
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState<CompareResult | null>(null);
-  const [errorModal, setErrorModal] = useState<{ visible: boolean; message: string }>({ visible: false, message: '' });
+
+  const [errorModal, setErrorModal] = useState<{ visible: boolean; message: string }>({
+    visible: false,
+    message: '',
+  });
   const [logoutModal, setLogoutModal] = useState(false);
 
   const showError = (message: string) => setErrorModal({ visible: true, message });
+
+  const openPickerForSlot = (slotKey: 'main' | 'comp1' | 'comp2') => {
+    console.log('[Home] Opening source picker for slot:', slotKey);
+    setPickerModal({ visible: true, slotKey });
+  };
+
+  const handlePickSource = async (
+    slotKey: 'main' | 'comp1' | 'comp2',
+    source: 'gallery' | 'camera'
+  ) => {
+    console.log('[Home] Picking photo for slot:', slotKey, 'source:', source);
+    setPickerModal((p) => ({ ...p, visible: false }));
+
+    const uri = source === 'gallery' ? await pickFromGallery() : await pickFromCamera();
+    if (!uri) return;
+
+    setResult(null);
+    setDetectingFaces(true);
+
+    try {
+      const faces = await detectFacesViaGemini(uri);
+      console.log('[Home] Faces detected:', faces.length, 'for slot:', slotKey);
+
+      if (faces.length <= 1) {
+        const finalUri =
+          faces.length === 1 && !(faces[0].x === 5 && faces[0].width === 90)
+            ? await cropToFace(uri, faces[0])
+            : uri;
+        applyUri(slotKey, finalUri);
+      } else {
+        setPendingFace({ slotKey, uri, faces });
+      }
+    } finally {
+      setDetectingFaces(false);
+    }
+  };
+
+  const applyUri = (slotKey: 'main' | 'comp1' | 'comp2', uri: string) => {
+    if (slotKey === 'main') setMainUri(uri);
+    else if (slotKey === 'comp1') setComp1Uri(uri);
+    else setComp2Uri(uri);
+  };
+
+  const handleFaceSelected = async (faceIndex: number) => {
+    if (!pendingFace) return;
+    console.log('[Home] Face selected index:', faceIndex, 'for slot:', pendingFace.slotKey);
+    const face = pendingFace.faces[faceIndex];
+    const croppedUri = await cropToFace(pendingFace.uri, face);
+    applyUri(pendingFace.slotKey, croppedUri);
+    setPendingFace(null);
+  };
+
+  const handleFaceSelectorCancel = () => {
+    console.log('[Home] Face selector cancelled');
+    if (pendingFace) {
+      applyUri(pendingFace.slotKey, pendingFace.uri);
+    }
+    setPendingFace(null);
+  };
 
   const handleLogout = async () => {
     console.log('[Home] User confirmed logout');
@@ -187,26 +460,8 @@ export default function HomeScreen() {
     }
   };
 
-  const handlePickMain = async (source: 'gallery' | 'camera') => {
-    console.log('[Home] User tapped pick main photo:', source);
-    const uri = source === 'gallery' ? await pickFromGallery() : await pickFromCamera();
-    if (uri) { setMainUri(uri); setResult(null); }
-  };
-
-  const handlePickComp1 = async (source: 'gallery' | 'camera') => {
-    console.log('[Home] User tapped pick comparison photo 1:', source);
-    const uri = source === 'gallery' ? await pickFromGallery() : await pickFromCamera();
-    if (uri) { setComp1Uri(uri); setResult(null); }
-  };
-
-  const handlePickComp2 = async (source: 'gallery' | 'camera') => {
-    console.log('[Home] User tapped pick comparison photo 2:', source);
-    const uri = source === 'gallery' ? await pickFromGallery() : await pickFromCamera();
-    if (uri) { setComp2Uri(uri); setResult(null); }
-  };
-
-  const handleCompare = async () => {
-    console.log('[Home] User tapped Confronta button');
+  const handleAnalyze = async () => {
+    console.log('[Home] User tapped ANALIZZA ORA button');
     if (!mainUri || !comp1Uri || !comp2Uri) return;
 
     setIsAnalyzing(true);
@@ -228,25 +483,35 @@ export default function HomeScreen() {
       saveComparison(res).catch((e) => console.warn('[Home] Failed to save comparison:', e));
     } catch (error: unknown) {
       console.error('[Home] Compare error:', error);
-      const msg = error instanceof Error ? error.message : "Si è verificato un errore durante il confronto.";
+      const msg =
+        error instanceof Error ? error.message : 'Si è verificato un errore durante il confronto.';
       showError(msg);
     } finally {
       setIsAnalyzing(false);
     }
   };
 
-  const canCompare = !!mainUri && !!comp1Uri && !!comp2Uri && !isAnalyzing;
+  const canAnalyze = !!mainUri && !!comp1Uri && !!comp2Uri && !isAnalyzing && !detectingFaces;
 
   const winner1 = result ? result.winner === 1 : undefined;
   const winner2 = result ? result.winner === 2 : undefined;
   const sim1 = result ? result.similarity_1 : null;
   const sim2 = result ? result.similarity_2 : null;
 
-  const winnerLabel = result
+  const winnerDisplayName = result
     ? result.winner === 1
-      ? 'Foto confronto 1'
-      : 'Foto confronto 2'
+      ? comp1Name.trim() || 'Foto 1'
+      : comp2Name.trim() || 'Foto 2'
     : '';
+
+  const comp1DisplayName = comp1Name.trim() || 'Foto 1';
+  const comp2DisplayName = comp2Name.trim() || 'Foto 2';
+
+  const hintText = !mainUri
+    ? 'Aggiungi la foto principale per iniziare'
+    : !comp1Uri
+    ? 'Aggiungi la foto confronto 1'
+    : 'Aggiungi la foto confronto 2';
 
   return (
     <LinearGradient
@@ -262,6 +527,7 @@ export default function HomeScreen() {
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
           {/* Header */}
           <View style={styles.header}>
@@ -283,11 +549,12 @@ export default function HomeScreen() {
               <Text style={styles.sectionTitle}>Foto principale</Text>
             </View>
             <PhotoSlot
-              label="La foto da confrontare"
+              slotLabel="La foto da confrontare"
               uri={mainUri}
-              onGallery={() => handlePickMain('gallery')}
-              onCamera={() => handlePickMain('camera')}
-              disabled={isAnalyzing}
+              name={mainName}
+              onNameChange={setMainName}
+              onPress={() => openPickerForSlot('main')}
+              disabled={isAnalyzing || detectingFaces}
             />
           </View>
 
@@ -307,22 +574,24 @@ export default function HomeScreen() {
             <View style={styles.comparisonRow}>
               <View style={styles.comparisonSlot}>
                 <PhotoSlot
-                  label="Foto 1"
+                  slotLabel="Foto 1"
                   uri={comp1Uri}
-                  onGallery={() => handlePickComp1('gallery')}
-                  onCamera={() => handlePickComp1('camera')}
-                  disabled={isAnalyzing}
+                  name={comp1Name}
+                  onNameChange={setComp1Name}
+                  onPress={() => openPickerForSlot('comp1')}
+                  disabled={isAnalyzing || detectingFaces}
                   isWinner={winner1}
                   similarity={sim1}
                 />
               </View>
               <View style={styles.comparisonSlot}>
                 <PhotoSlot
-                  label="Foto 2"
+                  slotLabel="Foto 2"
                   uri={comp2Uri}
-                  onGallery={() => handlePickComp2('gallery')}
-                  onCamera={() => handlePickComp2('camera')}
-                  disabled={isAnalyzing}
+                  name={comp2Name}
+                  onNameChange={setComp2Name}
+                  onPress={() => openPickerForSlot('comp2')}
+                  disabled={isAnalyzing || detectingFaces}
                   isWinner={winner2}
                   similarity={sim2}
                 />
@@ -330,15 +599,23 @@ export default function HomeScreen() {
             </View>
           </View>
 
-          {/* Compare Button */}
+          {/* Face detecting indicator */}
+          {detectingFaces && (
+            <View style={styles.detectingRow}>
+              <ActivityIndicator color={colors.secondary} size="small" />
+              <Text style={styles.detectingText}>Rilevamento volti...</Text>
+            </View>
+          )}
+
+          {/* ANALIZZA ORA Button */}
           <TouchableOpacity
-            style={[styles.compareButton, !canCompare && styles.compareButtonDisabled]}
-            onPress={handleCompare}
-            disabled={!canCompare}
+            style={[styles.compareButton, !canAnalyze && styles.compareButtonDisabled]}
+            onPress={handleAnalyze}
+            disabled={!canAnalyze}
             activeOpacity={0.8}
           >
             <LinearGradient
-              colors={canCompare ? [colors.secondary, colors.accent] : ['#555', '#333']}
+              colors={canAnalyze ? [colors.secondary, colors.accent] : ['#555', '#333']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
               style={styles.compareGradient}
@@ -351,7 +628,7 @@ export default function HomeScreen() {
               ) : (
                 <>
                   <Text style={styles.compareButtonEmoji}>🔍</Text>
-                  <Text style={styles.compareButtonText}>Confronta</Text>
+                  <Text style={styles.compareButtonText}>ANALIZZA ORA</Text>
                   <ChevronRight size={20} color={colors.background} />
                 </>
               )}
@@ -359,14 +636,8 @@ export default function HomeScreen() {
           </TouchableOpacity>
 
           {/* Progress hint */}
-          {!canCompare && !isAnalyzing && (
-            <Text style={styles.hintText}>
-              {!mainUri
-                ? 'Aggiungi la foto principale per iniziare'
-                : !comp1Uri
-                ? 'Aggiungi la foto confronto 1'
-                : 'Aggiungi la foto confronto 2'}
-            </Text>
+          {!canAnalyze && !isAnalyzing && !detectingFaces && (
+            <Text style={styles.hintText}>{hintText}</Text>
           )}
 
           {/* Results */}
@@ -379,12 +650,12 @@ export default function HomeScreen() {
 
               <View style={styles.winnerCard}>
                 <Text style={styles.winnerLabel}>Somiglia di più a:</Text>
-                <Text style={styles.winnerName}>{winnerLabel}</Text>
+                <Text style={styles.winnerName}>{winnerDisplayName}</Text>
               </View>
 
               <View style={styles.similarityRow}>
                 <View style={[styles.simCard, { borderColor: winner1 ? colors.success : colors.error }]}>
-                  <Text style={styles.simCardLabel}>Foto 1</Text>
+                  <Text style={styles.simCardLabel}>{comp1DisplayName}</Text>
                   <Text style={[styles.simCardValue, { color: winner1 ? colors.success : colors.error }]}>
                     {Number(result.similarity_1).toFixed(0)}%
                   </Text>
@@ -392,7 +663,7 @@ export default function HomeScreen() {
                 </View>
                 <View style={styles.simDivider} />
                 <View style={[styles.simCard, { borderColor: winner2 ? colors.success : colors.error }]}>
-                  <Text style={styles.simCardLabel}>Foto 2</Text>
+                  <Text style={styles.simCardLabel}>{comp2DisplayName}</Text>
                   <Text style={[styles.simCardValue, { color: winner2 ? colors.success : colors.error }]}>
                     {Number(result.similarity_2).toFixed(0)}%
                   </Text>
@@ -424,6 +695,28 @@ export default function HomeScreen() {
           <View style={{ height: 120 }} />
         </ScrollView>
 
+        {/* Source Picker Modal */}
+        <SourcePickerModal
+          visible={pickerModal.visible}
+          onGallery={() => handlePickSource(pickerModal.slotKey, 'gallery')}
+          onCamera={() => handlePickSource(pickerModal.slotKey, 'camera')}
+          onCancel={() => {
+            console.log('[Home] Source picker cancelled');
+            setPickerModal((p) => ({ ...p, visible: false }));
+          }}
+        />
+
+        {/* Face Selector */}
+        {pendingFace && (
+          <FaceSelector
+            visible={!!pendingFace}
+            imageUri={pendingFace.uri}
+            faces={pendingFace.faces}
+            onSelectFace={handleFaceSelected}
+            onCancel={handleFaceSelectorCancel}
+          />
+        )}
+
         {/* Error Modal */}
         <Modal
           visible={errorModal.visible}
@@ -438,7 +731,10 @@ export default function HomeScreen() {
               <Text style={styles.modalMessage}>{errorModal.message}</Text>
               <TouchableOpacity
                 style={styles.modalButton}
-                onPress={() => setErrorModal({ visible: false, message: '' })}
+                onPress={() => {
+                  console.log('[Home] Error modal dismissed');
+                  setErrorModal({ visible: false, message: '' });
+                }}
               >
                 <Text style={styles.modalButtonText}>OK</Text>
               </TouchableOpacity>
@@ -461,7 +757,10 @@ export default function HomeScreen() {
               <View style={styles.modalButtons}>
                 <TouchableOpacity
                   style={[styles.modalButtonHalf, { backgroundColor: colors.textSecondary }]}
-                  onPress={() => setLogoutModal(false)}
+                  onPress={() => {
+                    console.log('[Home] Logout cancelled');
+                    setLogoutModal(false);
+                  }}
                 >
                   <Text style={styles.modalButtonText}>Annulla</Text>
                 </TouchableOpacity>
@@ -489,8 +788,19 @@ const styles = StyleSheet.create({
   header: { marginBottom: 28, alignItems: 'center' },
   emojiRow: { flexDirection: 'row', gap: 12, marginBottom: 12 },
   emoji: { fontSize: 32 },
-  title: { fontSize: 30, fontWeight: 'bold', color: colors.text, marginBottom: 8, textAlign: 'center' },
-  subtitle: { fontSize: 15, color: colors.textSecondary, textAlign: 'center', lineHeight: 22 },
+  title: {
+    fontSize: 30,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  subtitle: {
+    fontSize: 15,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
 
   section: { marginBottom: 24 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 },
@@ -505,30 +815,52 @@ const styles = StyleSheet.create({
   comparisonSlot: { flex: 1 },
 
   slotWrapper: { gap: 8 },
-  slotLabel: { fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginBottom: 2 },
+  slotLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    marginBottom: 2,
+  },
   slotCard: {
     borderRadius: 16,
     overflow: 'hidden',
     aspectRatio: 3 / 4,
-    borderWidth: 2,
+    borderWidth: 2.5,
     backgroundColor: colors.card,
   },
   slotImage: { width: '100%', height: '100%' },
-  slotPlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
-  slotPlaceholderText: { fontSize: 12, color: colors.textSecondary, textAlign: 'center', paddingHorizontal: 8 },
-  slotButtons: { flexDirection: 'row', gap: 8 },
-  slotBtn: {
+  slotPlaceholder: {
     flex: 1,
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    backgroundColor: colors.card,
-    gap: 6,
+    gap: 8,
   },
-  slotBtnText: { fontSize: 12, fontWeight: '600' },
+  slotPlaceholderText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    paddingHorizontal: 8,
+  },
+  editOverlay: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 16,
+    padding: 6,
+  },
+
+  nameInput: {
+    backgroundColor: colors.card,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: colors.text,
+    borderWidth: 1.5,
+    borderColor: colors.secondary,
+    fontWeight: '500',
+  },
 
   winnerBadge: {
     position: 'absolute',
@@ -553,6 +885,15 @@ const styles = StyleSheet.create({
   },
   similarityBadgeText: { fontSize: 13, fontWeight: 'bold', color: '#fff' },
 
+  detectingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  detectingText: { fontSize: 14, color: colors.textSecondary },
+
   compareButton: {
     borderRadius: 16,
     overflow: 'hidden',
@@ -572,9 +913,19 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   compareButtonEmoji: { fontSize: 20 },
-  compareButtonText: { fontSize: 18, fontWeight: 'bold', color: colors.background },
+  compareButtonText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.background,
+    letterSpacing: 0.5,
+  },
 
-  hintText: { fontSize: 13, color: colors.textSecondary, textAlign: 'center', marginTop: 10 },
+  hintText: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: 10,
+  },
 
   resultsSection: {
     backgroundColor: colors.card,
@@ -605,7 +956,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   simDivider: { width: 1, height: 60, backgroundColor: colors.border },
-  simCardLabel: { fontSize: 14, color: colors.textSecondary, fontWeight: '600' },
+  simCardLabel: { fontSize: 13, color: colors.textSecondary, fontWeight: '600', textAlign: 'center' },
   simCardValue: { fontSize: 28, fontWeight: 'bold' },
   simCardWinner: { fontSize: 18 },
   explanationCard: {
@@ -644,7 +995,13 @@ const styles = StyleSheet.create({
   },
   modalEmoji: { fontSize: 48, marginBottom: 12 },
   modalTitle: { fontSize: 20, fontWeight: 'bold', color: colors.text, marginBottom: 12 },
-  modalMessage: { fontSize: 16, color: colors.textSecondary, textAlign: 'center', marginBottom: 24, lineHeight: 22 },
+  modalMessage: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 22,
+  },
   modalButton: {
     backgroundColor: colors.secondary,
     paddingVertical: 12,
@@ -652,7 +1009,12 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     minWidth: 100,
   },
-  modalButtonText: { fontSize: 16, fontWeight: 'bold', color: colors.background, textAlign: 'center' },
+  modalButtonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: colors.background,
+    textAlign: 'center',
+  },
   modalButtons: { flexDirection: 'row', gap: 12, width: '100%' },
   modalButtonHalf: { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
 });
