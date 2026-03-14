@@ -1,9 +1,6 @@
-
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { Platform } from "react-native";
-import * as Linking from "expo-linking";
 import { authClient, setBearerToken, clearAuthTokens } from "@/lib/auth";
-import { supabase } from "@/lib/supabase";
 
 interface User {
   id: string;
@@ -19,7 +16,6 @@ interface AuthContextType {
   signUpWithEmail: (email: string, password: string, name?: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   signInWithApple: () => Promise<void>;
-  signInWithGitHub: () => Promise<void>;
   signOut: () => Promise<void>;
   fetchUser: () => Promise<void>;
 }
@@ -34,8 +30,6 @@ function openOAuthPopup(provider: string): Promise<string> {
     const left = window.screenX + (window.outerWidth - width) / 2;
     const top = window.screenY + (window.outerHeight - height) / 2;
 
-    console.log(`[OAuth] Opening popup for ${provider}:`, popupUrl);
-
     const popup = window.open(
       popupUrl,
       "oauth-popup",
@@ -43,7 +37,6 @@ function openOAuthPopup(provider: string): Promise<string> {
     );
 
     if (!popup) {
-      console.error("[OAuth] Failed to open popup - popups may be blocked");
       reject(new Error("Failed to open popup. Please allow popups for this site."));
       return;
     }
@@ -51,23 +44,16 @@ function openOAuthPopup(provider: string): Promise<string> {
     let messageReceived = false;
 
     const handleMessage = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) {
-        return;
-      }
-      
-      console.log("[OAuth] Received message:", event.data);
-      
+      if (event.origin !== window.location.origin) return;
       if (event.data?.type === "oauth-success") {
         messageReceived = true;
         window.removeEventListener("message", handleMessage);
         clearInterval(checkClosed);
-        console.log("[OAuth] Success - token/session received");
         resolve(event.data.token || "cookie-auth");
       } else if (event.data?.type === "oauth-error") {
         messageReceived = true;
         window.removeEventListener("message", handleMessage);
         clearInterval(checkClosed);
-        console.error("[OAuth] Error received:", event.data.error);
         reject(new Error(event.data.error || "OAuth failed"));
       }
     };
@@ -80,18 +66,16 @@ function openOAuthPopup(provider: string): Promise<string> {
           clearInterval(checkClosed);
           window.removeEventListener("message", handleMessage);
           if (!messageReceived) {
-            console.warn("[OAuth] Popup closed without receiving message");
             reject(new Error("Authentication cancelled"));
           }
         }
       } catch (e) {
-        // Ignore cross-origin errors
+        // ignore cross-origin errors
       }
     }, 500);
 
     setTimeout(() => {
       if (!messageReceived) {
-        console.error("[OAuth] Timeout - no response after 3 minutes");
         clearInterval(checkClosed);
         window.removeEventListener("message", handleMessage);
         try { popup.close(); } catch (e) {}
@@ -106,88 +90,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    console.log("[AuthContext] Initializing - fetching user");
     fetchUser();
-
-    // Listen for deep links
-    const subscription = Linking.addEventListener("url", (event) => {
-      console.log("[AuthContext] Deep link received:", event.url);
-      
-      const url = event.url;
-      if (url.includes("auth-callback")) {
-        console.log("[AuthContext] Auth callback detected, will be handled by auth-callback screen");
-      }
-    });
-
-    // Listen for Supabase auth state changes
-    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log("[AuthContext] Supabase auth state changed:", event);
-      
-      if (event === 'SIGNED_IN' && session) {
-        console.log("[AuthContext] User signed in via Supabase");
-        // Sync with Better Auth if needed
-        await fetchUser();
-      } else if (event === 'SIGNED_OUT') {
-        console.log("[AuthContext] User signed out via Supabase");
-        setUser(null);
-      }
-    });
-
-    // Auto-refresh session every 5 minutes
-    const intervalId = setInterval(() => {
-      console.log("[AuthContext] Auto-refreshing user session...");
-      fetchUser();
-    }, 5 * 60 * 1000);
-
-    return () => {
-      subscription.remove();
-      authListener.subscription.unsubscribe();
-      clearInterval(intervalId);
-    };
   }, []);
 
   const fetchUser = async () => {
     try {
       setLoading(true);
-      console.log("[AuthContext] Fetching user session...");
-      
-      // Try Supabase first (primary auth for this app)
-      const { data: { session: supabaseSession } } = await supabase.auth.getSession();
-      
-      if (supabaseSession?.user) {
-        console.log("[AuthContext] User found via Supabase:", supabaseSession.user.email);
-        setUser({
-          id: supabaseSession.user.id,
-          email: supabaseSession.user.email || '',
-          name: supabaseSession.user.user_metadata?.name || supabaseSession.user.user_metadata?.full_name,
-          image: supabaseSession.user.user_metadata?.avatar_url,
-        });
-        
-        // Sync Better Auth token for backend API calls
-        // Use Supabase access token as bearer token for backend
-        if (supabaseSession.access_token) {
-          await setBearerToken(supabaseSession.access_token);
-          console.log("[AuthContext] Supabase access token synced as bearer token");
-        }
-        
-        return;
-      }
-      
-      // Fallback to Better Auth
       const session = await authClient.getSession();
-      console.log("[AuthContext] Better Auth session response:", session);
-      
       if (session?.data?.user) {
-        console.log("[AuthContext] User found via Better Auth:", session.data.user.email);
         setUser(session.data.user as User);
-        
-        // Sync token
         if (session.data.session?.token) {
           await setBearerToken(session.data.session.token);
-          console.log("[AuthContext] Bearer token synced");
         }
       } else {
-        console.log("[AuthContext] No user session found");
         setUser(null);
         await clearAuthTokens();
       }
@@ -200,210 +115,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signInWithEmail = async (email: string, password: string) => {
-    try {
-      console.log("[AuthContext] Signing in with email:", email);
-      
-      // Sign in with Supabase FIRST (for storage and database access)
-      const { data: supabaseData, error: supabaseError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      
-      if (supabaseError) {
-        console.error("[AuthContext] Supabase sign in failed:", supabaseError);
-        throw new Error("Credenziali non valide. Verifica email e password.");
-      }
-      
-      console.log("[AuthContext] Supabase sign in successful");
-      
-      // Sync Supabase access token as bearer token for backend API
-      if (supabaseData.session?.access_token) {
-        await setBearerToken(supabaseData.session.access_token);
-        console.log("[AuthContext] Supabase access token set as bearer token");
-      }
-      
-      // Then sign in with Better Auth (for backend API access)
-      try {
-        await authClient.signIn.email({ email, password });
-        console.log("[AuthContext] Better Auth sign in successful");
-      } catch (betterAuthError) {
-        console.warn("[AuthContext] Better Auth sign in warning:", betterAuthError);
-        // Don't throw - Supabase is primary for this app
-      }
-      
-      await fetchUser();
-    } catch (error) {
-      console.error("[AuthContext] Email sign in failed:", error);
-      throw error;
-    }
+    const result = await authClient.signIn.email({ email, password });
+    if (result?.error) throw new Error(result.error.message || "Sign in failed");
+    await fetchUser();
   };
 
   const signUpWithEmail = async (email: string, password: string, name?: string) => {
-    try {
-      console.log("[AuthContext] Signing up with email:", email);
-      
-      // Sign up with Supabase FIRST (for storage and database access)
-      const { data: supabaseData, error: supabaseError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            name: name || '',
-          },
-        },
-      });
-      
-      if (supabaseError) {
-        console.error("[AuthContext] Supabase sign up failed:", supabaseError);
-        throw new Error("Registrazione fallita. L'email potrebbe essere già in uso.");
-      }
-      
-      console.log("[AuthContext] Supabase sign up successful");
-      
-      // Sync Supabase access token as bearer token for backend API
-      if (supabaseData.session?.access_token) {
-        await setBearerToken(supabaseData.session.access_token);
-        console.log("[AuthContext] Supabase access token set as bearer token");
-      }
-      
-      // Then sign up with Better Auth (for backend API access)
-      try {
-        await authClient.signUp.email({
-          email,
-          password,
-          name,
-        });
-        console.log("[AuthContext] Better Auth sign up successful");
-      } catch (betterAuthError) {
-        console.warn("[AuthContext] Better Auth sign up warning:", betterAuthError);
-        // Don't throw - Supabase is primary for this app
-      }
-      
-      await fetchUser();
-    } catch (error) {
-      console.error("[AuthContext] Email sign up failed:", error);
-      throw error;
-      }
+    const result = await authClient.signUp.email({ email, password, name: name || "" });
+    if (result?.error) throw new Error(result.error.message || "Sign up failed");
+    await fetchUser();
   };
 
-  const signInWithSocial = async (provider: "google" | "apple" | "github") => {
-    try {
-      console.log(`[AuthContext] Starting ${provider} sign in (platform: ${Platform.OS})`);
-      
-      // Determine the correct redirect URI based on platform
-      const redirectTo = Platform.OS === "web" 
-        ? `${window.location.origin}/auth-callback`
-        : "chitisomiglia://auth-callback";
-      
-      console.log(`[AuthContext] Using redirect URI: ${redirectTo}`);
-      
-      // Use Supabase OAuth for social sign-in (it handles storage/database access automatically)
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: provider as any,
-        options: {
-          redirectTo: redirectTo,
-          skipBrowserRedirect: Platform.OS !== "web",
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-          },
-        },
-      });
-
-      if (error) {
-        console.error(`[AuthContext] Supabase OAuth error:`, error);
-        
-        // Provide detailed, user-friendly error messages
-        if (error.message.includes("missing OAuth secret") || error.message.includes("Client secret")) {
-          const providerName = provider === "google" ? "Google" : provider === "apple" ? "Apple" : "GitHub";
-          throw new Error(
-            `❌ Configurazione OAuth ${providerName} incompleta\n\n` +
-            `Per risolvere:\n` +
-            `1. Vai su Supabase Dashboard\n` +
-            `2. Authentication > Providers > ${providerName}\n` +
-            `3. Inserisci Client ID e Client Secret\n` +
-            `4. Salva le modifiche\n\n` +
-            `Vedi SUPABASE_SETUP_INSTRUCTIONS.md per i dettagli completi.`
-          );
-        }
-        
-        if (
-          error.message.includes("not enabled") || 
-          error.message.includes("not configured") ||
-          error.message.includes("Unsupported provider") ||
-          error.message.includes("provider is not enabled")
-        ) {
-          const providerName = provider === "google" ? "Google" : provider === "apple" ? "Apple" : "GitHub";
-          throw new Error(
-            `❌ Provider ${providerName} non abilitato\n\n` +
-            `Per risolvere:\n` +
-            `1. Vai su Supabase Dashboard\n` +
-            `2. Authentication > Providers > ${providerName}\n` +
-            `3. Clicca su "Enable"\n` +
-            `4. Configura Client ID e Client Secret\n\n` +
-            `Vedi SUPABASE_SETUP_INSTRUCTIONS.md per i dettagli completi.`
-          );
-        }
-        
-        if (error.message.includes("403") || error.message.includes("access denied")) {
-          throw new Error(
-            `❌ Errore 403 - Accesso negato da Google\n\n` +
-            `Possibili cause:\n` +
-            `1. L'app è in modalità Test e la tua email non è aggiunta come Test User\n` +
-            `2. Il Redirect URI non è configurato correttamente in Google Cloud Console\n\n` +
-            `Per risolvere:\n` +
-            `1. Vai su Google Cloud Console\n` +
-            `2. OAuth consent screen > Pubblica l'app OPPURE aggiungi la tua email come Test User\n` +
-            `3. Credentials > OAuth 2.0 Client > Aggiungi Redirect URI:\n` +
-            `   • https://fdnurgfcocmgknbmpjtd.supabase.co/auth/v1/callback\n` +
-            `   • chitisomiglia://auth-callback\n\n` +
-            `Vedi SUPABASE_SETUP_INSTRUCTIONS.md per i dettagli completi.`
-          );
-        }
-        
-        throw error;
+  const signInWithSocial = async (provider: "google" | "apple") => {
+    if (Platform.OS === "web") {
+      const token = await openOAuthPopup(provider);
+      if (token && token !== "cookie-auth") {
+        await setBearerToken(token);
       }
-
-      if (Platform.OS === "web" && data?.url) {
-        console.log(`[AuthContext] Redirecting to OAuth URL:`, data.url);
-        window.location.href = data.url;
-        return;
-      }
-
-      if (Platform.OS !== "web" && data?.url) {
-        console.log(`[AuthContext] Opening OAuth URL in browser:`, data.url);
-        // The URL will be opened by Supabase's auth system
-        // The callback will be handled by auth-callback.tsx
-      }
-      
-      console.log(`[AuthContext] OAuth initiated for ${provider}, waiting for callback...`);
-    } catch (error: any) {
-      console.error(`[AuthContext] ${provider} sign in failed:`, error);
-      throw error;
+      await fetchUser();
+    } else {
+      const callbackURL = "chitisomiglia://auth-callback";
+      const result = await authClient.signIn.social({ provider, callbackURL });
+      if (result?.error) throw new Error(result.error.message || `${provider} sign in failed`);
+      await fetchUser();
     }
   };
 
   const signInWithGoogle = () => signInWithSocial("google");
   const signInWithApple = () => signInWithSocial("apple");
-  const signInWithGitHub = () => signInWithSocial("github");
 
   const signOut = async () => {
     try {
-      console.log("[AuthContext] Signing out...");
-      
-      // Sign out from Supabase
-      await supabase.auth.signOut();
-      
-      // Sign out from Better Auth
-      try {
-        await authClient.signOut();
-      } catch (error) {
-        console.warn("[AuthContext] Better Auth sign out warning:", error);
-      }
+      await authClient.signOut();
     } catch (error) {
-      console.error("[AuthContext] Sign out failed (API):", error);
+      console.warn("[AuthContext] Sign out error:", error);
     } finally {
-      console.log("[AuthContext] Clearing local auth state");
       setUser(null);
       await clearAuthTokens();
     }
@@ -418,7 +164,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signUpWithEmail,
         signInWithGoogle,
         signInWithApple,
-        signInWithGitHub,
         signOut,
         fetchUser,
       }}

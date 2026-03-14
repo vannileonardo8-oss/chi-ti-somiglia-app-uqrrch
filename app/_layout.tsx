@@ -1,13 +1,11 @@
-
 import "react-native-reanimated";
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import { useFonts } from "expo-font";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { SystemBars } from "react-native-edge-to-edge";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useColorScheme, View, ActivityIndicator } from "react-native";
-import { useNetworkState } from "expo-network";
 import {
   DarkTheme,
   DefaultTheme,
@@ -22,18 +20,10 @@ export const unstable_settings = {
   initialRouteName: "(tabs)",
 };
 
-// Prevent splash screen from auto-hiding (with error handling)
 try {
-  SplashScreen.preventAutoHideAsync().catch(() => {
-    // Ignore error - splash screen might not be available
-    console.log('[SplashScreen] preventAutoHideAsync not available (safe to ignore)');
-  });
-} catch (error) {
-  // Ignore error - splash screen might not be available
-  console.log('[SplashScreen] preventAutoHideAsync error (safe to ignore)');
-}
+  SplashScreen.preventAutoHideAsync().catch(() => {});
+} catch {}
 
-// Auth Guard Component
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const segments = useSegments();
@@ -43,25 +33,21 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     if (loading) return;
     if (!segments || segments.length === 0) return;
 
-    const inAuthGroup = 
-      segments[0] === "auth" || 
-      segments[0] === "auth-popup" || 
+    const inAuthGroup =
+      segments[0] === "auth" ||
+      segments[0] === "auth-popup" ||
       segments[0] === "auth-callback";
 
-    console.log("[AuthGuard] user:", !!user, "loading:", loading, "segments:", segments, "inAuthGroup:", inAuthGroup);
-
     if (!user && !inAuthGroup) {
-      console.log("[AuthGuard] Redirecting to /auth");
       router.replace("/auth");
     } else if (user && inAuthGroup) {
-      console.log("[AuthGuard] Redirecting to home");
       router.replace("/(tabs)/(home)");
     }
   }, [user, loading, segments, router]);
 
   if (loading) {
     return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#000" }}>
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#0a0a0a" }}>
         <ActivityIndicator size="large" color="#FF6B9D" />
       </View>
     );
@@ -72,32 +58,19 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
-  const networkState = useNetworkState();
   const [loaded] = useFonts({
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
   });
 
   useEffect(() => {
     if (loaded) {
-      // Hide splash screen once fonts are loaded (with error handling)
-      const hideSplash = async () => {
-        try {
-          await SplashScreen.hideAsync();
-          console.log('[SplashScreen] Hidden successfully');
-        } catch (error) {
-          // Safe to ignore - splash screen might not be registered or already hidden
-          console.log('[SplashScreen] hideAsync error (safe to ignore):', error);
-        }
-      };
-
-      // Small delay to ensure everything is ready
-      setTimeout(hideSplash, 100);
+      setTimeout(async () => {
+        try { await SplashScreen.hideAsync(); } catch {}
+      }, 100);
     }
   }, [loaded]);
 
-  if (!loaded) {
-    return null;
-  }
+  if (!loaded) return null;
 
   const CustomDefaultTheme: Theme = {
     ...DefaultTheme,
@@ -127,9 +100,7 @@ export default function RootLayout() {
   return (
     <>
       <StatusBar style="auto" animated />
-      <ThemeProvider
-        value={colorScheme === "dark" ? CustomDarkTheme : CustomDefaultTheme}
-      >
+      <ThemeProvider value={colorScheme === "dark" ? CustomDarkTheme : CustomDefaultTheme}>
         <AuthProvider>
           <AuthGuard>
             <WidgetProvider>
