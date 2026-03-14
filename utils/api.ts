@@ -60,7 +60,45 @@ const edgeFunctionCall = async <T = unknown>(
 
 /**
  * POST /functions/v1/compare
- * Analyze a face image and return celebrity lookalikes.
+ * Compare a main photo against two comparison photos.
+ * Returns which comparison photo looks more like the main photo.
+ */
+export const comparePhotos = (
+  main_image: string,
+  comparison_image_1: string,
+  comparison_image_2: string
+) => {
+  console.log("[Edge] Calling compare edge function with 3 images");
+  return edgeFunctionCall<{
+    winner: number;
+    similarity_1: number;
+    similarity_2: number;
+    explanation: string;
+  }>("compare", {
+    method: "POST",
+    body: JSON.stringify({ main_image, comparison_image_1, comparison_image_2 }),
+  });
+};
+
+/**
+ * POST /functions/v1/comparisons
+ * Save a comparison result to history.
+ */
+export const saveComparison = (data: {
+  winner: number;
+  similarity_1: number;
+  similarity_2: number;
+  explanation: string;
+}) => {
+  console.log("[Edge] Saving comparison result to history");
+  return edgeFunctionCall<{ id: string }>("comparisons", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+/**
+ * @deprecated Use comparePhotos instead.
  */
 export const compareFace = (image_base64: string) => {
   console.log("[Edge] Calling compare edge function with base64 image");
