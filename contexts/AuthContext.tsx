@@ -52,9 +52,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const handleInvalidRefreshToken = async () => {
+    console.log("[AuthContext] Invalid refresh token detected — signing out");
+    try {
+      await supabase.auth.signOut();
+    } catch (_) {
+      // ignore errors during forced sign out
+    }
+    setUser(null);
+    setSession(null);
+    setLoading(false);
+  };
+
   useEffect(() => {
     // Load existing session on mount
-    supabase.auth.getSession().then(({ data: { session: s } }) => {
+    supabase.auth.getSession().then(({ data: { session: s }, error }) => {
+      if (error) {
+        const msg = error.message ?? "";
+        if (
+          msg.includes("Refresh Token Not Found") ||
+          (error as any).code === "invalid_refresh_token"
+        ) {
+          handleInvalidRefreshToken();
+          return;
+        }
+        console.error("[AuthContext] getSession error:", error);
+      }
       console.log("[AuthContext] Initial session:", s ? "found" : "none");
       setSession(s);
       setUser(s?.user ? mapSupabaseUser(s.user) : null);
@@ -65,6 +88,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, s) => {
         console.log("[AuthContext] Auth state change:", event);
+
+        // TOKEN_REFRESH_FAILED means the refresh token is invalid/expired
+        if (event === "TOKEN_REFRESH_FAILED") {
+          console.log("[AuthContext] TOKEN_REFRESH_FAILED — forcing sign out");
+          handleInvalidRefreshToken();
+          return;
+        }
+
+        // If token refresh returned no session, the refresh token is invalid
+        if (event === "TOKEN_REFRESHED" && !s) {
+          console.log("[AuthContext] TOKEN_REFRESHED with null session — forcing sign out");
+          handleInvalidRefreshToken();
+          return;
+        }
+
         setSession(s);
         setUser(s?.user ? mapSupabaseUser(s.user) : null);
         setLoading(false);

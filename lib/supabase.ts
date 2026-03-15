@@ -51,6 +51,15 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   },
 });
 
+// Silently sign out when the refresh token is invalid/expired so the app
+// redirects to the auth screen instead of showing a console error.
+supabase.auth.onAuthStateChange((event) => {
+  if (event === 'TOKEN_REFRESH_FAILED') {
+    console.log('[Supabase] Token refresh failed — signing out to clear invalid token');
+    supabase.auth.signOut().catch(() => {});
+  }
+});
+
 // Helper to upload image to Supabase Storage
 export async function uploadImageToSupabase(
   uri: string,
