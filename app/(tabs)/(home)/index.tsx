@@ -6,7 +6,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { Trophy, ChevronRight, ImageIcon, Camera } from 'lucide-react-native';
 import {
@@ -284,39 +284,30 @@ const pickerStyles = StyleSheet.create({
 interface PhotoSlotProps {
   slotLabel: string;
   uri: string | null;
+  faceReady: boolean;
   name: string;
   onNameChange: (v: string) => void;
   onPress: () => void;
   disabled: boolean;
-  isWinner?: boolean;
-  similarity?: number | null;
 }
 
 function PhotoSlot({
   slotLabel,
   uri,
+  faceReady,
   name,
   onNameChange,
   onPress,
   disabled,
-  isWinner,
-  similarity,
 }: PhotoSlotProps) {
   const imageSource = resolveImageSource(uri ?? undefined);
-  const winnerBorder = isWinner === true;
-  const loserBorder = isWinner === false;
-  const slotBorderColor = winnerBorder
-    ? colors.success
-    : loserBorder
-    ? colors.error
-    : colors.secondary; // YELLOW border always when neutral
-  const similarityText = similarity != null ? `${Number(similarity).toFixed(0)}%` : null;
+  const borderColor = faceReady ? colors.success : colors.secondary;
 
   return (
     <View style={styles.slotWrapper}>
       <Text style={styles.slotLabel}>{slotLabel}</Text>
       <TouchableOpacity
-        style={[styles.slotCard, { borderColor: slotBorderColor }]}
+        style={[styles.slotCard, { borderColor }]}
         onPress={() => {
           console.log('[Home] User tapped photo slot:', slotLabel);
           onPress();
@@ -327,20 +318,10 @@ function PhotoSlot({
         {uri ? (
           <>
             <Image source={imageSource} style={styles.slotImage} resizeMode="cover" />
-            {winnerBorder && (
-              <View style={styles.winnerBadge}>
-                <Trophy size={14} color="#fff" />
-                <Text style={styles.winnerBadgeText}>Vincitore</Text>
-              </View>
-            )}
-            {similarityText && (
-              <View
-                style={[
-                  styles.similarityBadge,
-                  { backgroundColor: winnerBorder ? colors.success : colors.error },
-                ]}
-              >
-                <Text style={styles.similarityBadgeText}>{similarityText}</Text>
+            {faceReady && (
+              <View style={styles.readyBadge}>
+                <Trophy size={12} color="#fff" />
+                <Text style={styles.readyBadgeText}>Pronto</Text>
               </View>
             )}
             <View style={styles.editOverlay}>
@@ -374,11 +355,17 @@ function PhotoSlot({
 
 export default function HomeScreen() {
   const { signOut } = useAuth();
+  const router = useRouter();
 
-  // Photo URIs
+  // Photo URIs (cropped face URIs once selected)
   const [mainUri, setMainUri] = useState<string | null>(null);
   const [comp1Uri, setComp1Uri] = useState<string | null>(null);
   const [comp2Uri, setComp2Uri] = useState<string | null>(null);
+
+  // Track whether a face has been confirmed for each slot
+  const [mainReady, setMainReady] = useState(false);
+  const [comp1Ready, setComp1Ready] = useState(false);
+  const [comp2Ready, setComp2Ready] = useState(false);
 
   // Names
   const [mainName, setMainName] = useState('');
@@ -397,7 +384,6 @@ export default function HomeScreen() {
 
   // Analysis
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [result, setResult] = useState<CompareResult | null>(null);
 
   // Modals
   const [errorModal, setErrorModal] = useState<{ visible: boolean; message: string }>({
@@ -444,20 +430,27 @@ export default function HomeScreen() {
     const uri = source === 'gallery' ? await pickFromGallery() : await pickFromCamera();
     if (!uri) return;
 
-    setResult(null);
     setDetectingFaces(true);
 
     try {
       const faces = await detectFacesViaGemini(uri);
       console.log('[Home] Faces detected:', faces.length, 'for slot:', slotKey);
 
-      if (faces.length <= 1) {
-        // Single face or fallback — use directly (crop if real face detected)
-        const finalUri =
-          faces.length === 1 && !(faces[0].x === 5 && faces[0].width === 90)
-            ? await cropToFace(uri, faces[0])
-            : uri;
-        applyUri(slotKey, finalUri);
+      if (faces.length === 0) {
+        // No faces — show error, discard photo
+        showError('Nessun volto rilevato, riprova con un\'altra foto');
+      } else if (faces.length === 1) {
+        // Exactly one face — check if it's the fallback full-image box
+        const isFallback = faces[0].x === 5 && faces[0].width === 90;
+        if (isFallback) {
+          // Fallback: show selector so user can confirm
+          setPendingFace({ slotKey, uri, faces });
+        } else {
+          // Real single face — auto-select and crop
+          console.log('[Home] Auto-selecting single detected face for slot:', slotKey);
+          const croppedUri = await cropToFace(uri, faces[0]);
+          applyUri(slotKey, croppedUri);
+        }
       } else {
         // Multiple faces — show selector
         setPendingFace({ slotKey, uri, faces });
@@ -468,9 +461,9 @@ export default function HomeScreen() {
   };
 
   const applyUri = (slotKey: 'main' | 'comp1' | 'comp2', uri: string) => {
-    if (slotKey === 'main') setMainUri(uri);
-    else if (slotKey === 'comp1') setComp1Uri(uri);
-    else setComp2Uri(uri);
+    if (slotKey === 'main') { setMainUri(uri); setMainReady(true); }
+    else if (slotKey === 'comp1') { setComp1Uri(uri); setComp1Ready(true); }
+    else { setComp2Uri(uri); setComp2Ready(true); }
   };
 
   const handleFaceSelected = async (faceIndex: number) => {
@@ -483,11 +476,8 @@ export default function HomeScreen() {
   };
 
   const handleFaceSelectorCancel = () => {
-    console.log('[Home] Face selector cancelled');
-    // Use full image without cropping
-    if (pendingFace) {
-      applyUri(pendingFace.slotKey, pendingFace.uri);
-    }
+    console.log('[Home] Face selector cancelled — discarding photo');
+    // Do NOT apply the image — user must select a face or cancel entirely
     setPendingFace(null);
   };
 
@@ -510,7 +500,6 @@ export default function HomeScreen() {
     if (!mainUri || !comp1Uri || !comp2Uri) return;
 
     setIsAnalyzing(true);
-    setResult(null);
 
     try {
       console.log('[Home] Encoding all 3 images to base64...');
@@ -523,9 +512,24 @@ export default function HomeScreen() {
       console.log('[Home] Sending POST /functions/v1/compare');
       const res = await comparePhotos(mainB64, comp1B64, comp2B64);
       console.log('[Home] Compare result:', res);
-      setResult(res);
 
       saveComparison(res).catch((e) => console.warn('[Home] Failed to save comparison:', e));
+
+      console.log('[Home] Navigating to results/comparison');
+      router.push({
+        pathname: '/results/comparison',
+        params: {
+          winner: String(res.winner),
+          similarity1: String(res.similarity_1),
+          similarity2: String(res.similarity_2),
+          explanation: res.explanation,
+          name1: comp1Name.trim() || 'Foto 1',
+          name2: comp2Name.trim() || 'Foto 2',
+          mainUri: mainUri,
+          comp1Uri: comp1Uri,
+          comp2Uri: comp2Uri,
+        },
+      });
     } catch (error: unknown) {
       console.error('[Home] Compare error:', error);
       const msg =
@@ -538,27 +542,15 @@ export default function HomeScreen() {
 
   // ── Derived state ────────────────────────────────────────────────────────────
 
-  const canAnalyze = !!mainUri && !!comp1Uri && !!comp2Uri && !isAnalyzing && !detectingFaces;
+  const canAnalyze = mainReady && comp1Ready && comp2Ready && !isAnalyzing && !detectingFaces;
 
-  const winner1 = result ? result.winner === 1 : undefined;
-  const winner2 = result ? result.winner === 2 : undefined;
-  const sim1 = result ? result.similarity_1 : null;
-  const sim2 = result ? result.similarity_2 : null;
-
-  const winnerDisplayName = result
-    ? result.winner === 1
-      ? comp1Name.trim() || 'Foto 1'
-      : comp2Name.trim() || 'Foto 2'
-    : '';
-
-  const comp1DisplayName = comp1Name.trim() || 'Foto 1';
-  const comp2DisplayName = comp2Name.trim() || 'Foto 2';
-
-  const hintText = !mainUri
+  const hintText = !mainReady
     ? 'Aggiungi la foto principale per iniziare'
-    : !comp1Uri
+    : !comp1Ready
     ? 'Aggiungi la foto confronto 1'
-    : 'Aggiungi la foto confronto 2';
+    : !comp2Ready
+    ? 'Aggiungi la foto confronto 2'
+    : '';
 
   return (
     <LinearGradient
@@ -598,6 +590,7 @@ export default function HomeScreen() {
             <PhotoSlot
               slotLabel="La foto da confrontare"
               uri={mainUri}
+              faceReady={mainReady}
               name={mainName}
               onNameChange={setMainName}
               onPress={() => openPickerForSlot('main')}
@@ -623,24 +616,22 @@ export default function HomeScreen() {
                 <PhotoSlot
                   slotLabel="Foto 1"
                   uri={comp1Uri}
+                  faceReady={comp1Ready}
                   name={comp1Name}
                   onNameChange={setComp1Name}
                   onPress={() => openPickerForSlot('comp1')}
                   disabled={isAnalyzing || detectingFaces}
-                  isWinner={winner1}
-                  similarity={sim1}
                 />
               </View>
               <View style={styles.comparisonSlot}>
                 <PhotoSlot
                   slotLabel="Foto 2"
                   uri={comp2Uri}
+                  faceReady={comp2Ready}
                   name={comp2Name}
                   onNameChange={setComp2Name}
                   onPress={() => openPickerForSlot('comp2')}
                   disabled={isAnalyzing || detectingFaces}
-                  isWinner={winner2}
-                  similarity={sim2}
                 />
               </View>
             </View>
@@ -685,46 +676,6 @@ export default function HomeScreen() {
           {/* Progress hint */}
           {!canAnalyze && !isAnalyzing && !detectingFaces && (
             <Text style={styles.hintText}>{hintText}</Text>
-          )}
-
-          {/* Results */}
-          {result && (
-            <View style={styles.resultsSection}>
-              <View style={styles.resultsTitleRow}>
-                <Trophy size={24} color={colors.secondary} />
-                <Text style={styles.resultsTitle}>Risultato</Text>
-              </View>
-
-              <View style={styles.winnerCard}>
-                <Text style={styles.winnerLabel}>Somiglia di più a:</Text>
-                <Text style={styles.winnerName}>{winnerDisplayName}</Text>
-              </View>
-
-              <View style={styles.similarityRow}>
-                <View style={[styles.simCard, { borderColor: winner1 ? colors.success : colors.error }]}>
-                  <Text style={styles.simCardLabel}>{comp1DisplayName}</Text>
-                  <Text style={[styles.simCardValue, { color: winner1 ? colors.success : colors.error }]}>
-                    {Number(result.similarity_1).toFixed(0)}%
-                  </Text>
-                  {winner1 && <Text style={styles.simCardWinner}>🏆</Text>}
-                </View>
-                <View style={styles.simDivider} />
-                <View style={[styles.simCard, { borderColor: winner2 ? colors.success : colors.error }]}>
-                  <Text style={styles.simCardLabel}>{comp2DisplayName}</Text>
-                  <Text style={[styles.simCardValue, { color: winner2 ? colors.success : colors.error }]}>
-                    {Number(result.similarity_2).toFixed(0)}%
-                  </Text>
-                  {winner2 && <Text style={styles.simCardWinner}>🏆</Text>}
-                </View>
-              </View>
-
-              {result.explanation ? (
-                <View style={styles.explanationCard}>
-                  <Text style={styles.explanationTitle}>Spiegazione</Text>
-                  <Text style={styles.explanationText}>{result.explanation}</Text>
-                </View>
-              ) : null}
-            </View>
           )}
 
           {/* Logout */}

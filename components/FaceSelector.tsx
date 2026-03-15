@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,10 +7,11 @@ import {
   Modal,
   TouchableOpacity,
   Image,
-  Dimensions,
+  ScrollView,
   ActivityIndicator,
-  Platform,
+  Dimensions,
 } from 'react-native';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { colors } from '@/styles/commonStyles';
 
 interface Face {
@@ -28,85 +29,96 @@ interface FaceSelectorProps {
   onCancel: () => void;
 }
 
+interface FaceThumbnail {
+  index: number;
+  uri: string;
+}
+
+const THUMB_SIZE = 100;
+const screenWidth = Dimensions.get('window').width;
+
+async function cropFaceThumbnail(uri: string, face: Face): Promise<string> {
+  try {
+    const info = await ImageManipulator.manipulateAsync(uri, [], {
+      format: ImageManipulator.SaveFormat.JPEG,
+    });
+    const imgWidth = info.width;
+    const imgHeight = info.height;
+
+    // Add padding around the face (20% on each side)
+    const padX = face.width * 0.2;
+    const padY = face.height * 0.2;
+
+    const rawX = (face.x - padX) / 100;
+    const rawY = (face.y - padY) / 100;
+    const rawW = (face.width + padX * 2) / 100;
+    const rawH = (face.height + padY * 2) / 100;
+
+    const originX = Math.max(0, Math.round(rawX * imgWidth));
+    const originY = Math.max(0, Math.round(rawY * imgHeight));
+    const cropWidth = Math.min(imgWidth - originX, Math.round(rawW * imgWidth));
+    const cropHeight = Math.min(imgHeight - originY, Math.round(rawH * imgHeight));
+
+    const cropped = await ImageManipulator.manipulateAsync(
+      uri,
+      [{ crop: { originX, originY, width: cropWidth, height: cropHeight } }],
+      { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
+    );
+    return cropped.uri;
+  } catch (err) {
+    console.warn('[FaceSelector] Thumbnail crop failed:', err);
+    return uri;
+  }
+}
+
 export function FaceSelector({ visible, imageUri, faces, onSelectFace, onCancel }: FaceSelectorProps) {
   const [selectedFace, setSelectedFace] = useState<number | null>(null);
-  const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
-  const [imageLoaded, setImageLoaded] = useState(false);
+  const [thumbnails, setThumbnails] = useState<FaceThumbnail[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const screenWidth = Dimensions.get('window').width;
-  const maxImageWidth = screenWidth - 40;
+  useEffect(() => {
+    if (!visible || !imageUri || faces.length === 0) return;
 
-  const handleImageLoad = (event: any) => {
-    console.log('[FaceSelector] Image load event:', event.nativeEvent);
-    
-    try {
-      let width = 0;
-      let height = 0;
+    setSelectedFace(null);
+    setThumbnails([]);
+    setLoading(true);
 
-      if (Platform.OS === 'web') {
-        // On web, dimensions are in event.nativeEvent directly
-        width = event.nativeEvent.width || 0;
-        height = event.nativeEvent.height || 0;
-        
-        // Fallback: try to get from target element
-        if (!width && event.target) {
-          width = event.target.naturalWidth || event.target.width || 0;
-          height = event.target.naturalHeight || event.target.height || 0;
-        }
-      } else {
-        // On native, dimensions are in event.nativeEvent.source
-        const source = event.nativeEvent.source;
-        if (source) {
-          width = source.width || 0;
-          height = source.height || 0;
-        }
-      }
+    console.log('[FaceSelector] Generating thumbnails for', faces.length, 'faces');
 
-      console.log('[FaceSelector] Image dimensions:', { width, height });
-
-      if (width > 0 && height > 0) {
-        const aspectRatio = width / height;
-        const displayWidth = maxImageWidth;
-        const displayHeight = displayWidth / aspectRatio;
-        setImageSize({ width: displayWidth, height: displayHeight });
-        setImageLoaded(true);
-      } else {
-        console.warn('[FaceSelector] Could not determine image dimensions, using fallback');
-        // Fallback: use a default aspect ratio (3:4)
-        const displayWidth = maxImageWidth;
-        const displayHeight = displayWidth * (4 / 3);
-        setImageSize({ width: displayWidth, height: displayHeight });
-        setImageLoaded(true);
-      }
-    } catch (error) {
-      console.error('[FaceSelector] Error in handleImageLoad:', error);
-      // Fallback on error
-      const displayWidth = maxImageWidth;
-      const displayHeight = displayWidth * (4 / 3);
-      setImageSize({ width: displayWidth, height: displayHeight });
-      setImageLoaded(true);
-    }
-  };
+    Promise.all(
+      faces.map(async (face, index) => {
+        const uri = await cropFaceThumbnail(imageUri, face);
+        return { index, uri };
+      })
+    )
+      .then((results) => {
+        console.log('[FaceSelector] Thumbnails ready:', results.length);
+        setThumbnails(results);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error('[FaceSelector] Failed to generate thumbnails:', err);
+        setLoading(false);
+      });
+  }, [visible, imageUri, faces]);
 
   const handleConfirm = () => {
     if (selectedFace !== null) {
+      console.log('[FaceSelector] Confirming face selection:', selectedFace);
       onSelectFace(selectedFace);
-      // Reset state for next use
       setSelectedFace(null);
-      setImageLoaded(false);
-      setImageSize({ width: 0, height: 0 });
+      setThumbnails([]);
     }
   };
 
   const handleCancelPress = () => {
-    // Reset state
+    console.log('[FaceSelector] Cancelled');
     setSelectedFace(null);
-    setImageLoaded(false);
-    setImageSize({ width: 0, height: 0 });
+    setThumbnails([]);
     onCancel();
   };
 
-  const faceCountText = faces.length === 1 ? '1 volto' : `${faces.length} volti`;
+  const faceCountText = faces.length === 1 ? '1 volto rilevato' : `${faces.length} volti rilevati`;
 
   return (
     <Modal
@@ -116,92 +128,77 @@ export function FaceSelector({ visible, imageUri, faces, onSelectFace, onCancel 
       onRequestClose={handleCancelPress}
     >
       <View style={styles.overlay}>
-        <View style={[styles.content, { backgroundColor: colors.card }]}>
-          <Text style={[styles.title, { color: colors.text }]}>
-            Seleziona un volto
-          </Text>
-          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-            Rilevati {faceCountText}. Tocca il volto da usare per il confronto.
+        <View style={styles.content}>
+          <Text style={styles.title}>Seleziona un volto</Text>
+          <Text style={styles.subtitle}>
+            {faceCountText}. Tocca il volto da usare per il confronto.
           </Text>
 
-          <View style={styles.imageContainer}>
-            <View style={{ position: 'relative' }}>
-              <Image
-                source={{ uri: imageUri }}
-                style={
-                  imageLoaded && imageSize.width > 0
-                    ? { width: imageSize.width, height: imageSize.height }
-                    : { width: maxImageWidth, height: maxImageWidth * 1.33 }
-                }
-                onLoad={handleImageLoad}
-                resizeMode="contain"
-              />
-              
-              {!imageLoaded && (
-                <ActivityIndicator
-                  style={styles.loader}
-                  color={colors.secondary}
-                  size="large"
-                />
-              )}
-
-              {imageLoaded && imageSize.width > 0 && faces.map((face, index) => {
-                const scaleX = imageSize.width / 100;
-                const scaleY = imageSize.height / 100;
-                const isSelected = selectedFace === index;
-                
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator color={colors.secondary} size="large" />
+              <Text style={styles.loadingText}>Preparazione volti...</Text>
+            </View>
+          ) : (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.thumbnailsRow}
+            >
+              {thumbnails.map((thumb) => {
+                const isSelected = selectedFace === thumb.index;
                 return (
                   <TouchableOpacity
-                    key={index}
+                    key={thumb.index}
                     style={[
-                      styles.faceBox,
-                      {
-                        left: face.x * scaleX,
-                        top: face.y * scaleY,
-                        width: face.width * scaleX,
-                        height: face.height * scaleY,
-                        borderColor: isSelected ? colors.secondary : colors.accent,
-                        borderWidth: isSelected ? 4 : 2,
-                        backgroundColor: isSelected ? 'rgba(255, 193, 7, 0.2)' : 'rgba(255, 255, 255, 0.1)',
-                      },
+                      styles.thumbWrapper,
+                      isSelected && styles.thumbWrapperSelected,
                     ]}
                     onPress={() => {
-                      console.log('[FaceSelector] Face selected:', index);
-                      setSelectedFace(index);
+                      console.log('[FaceSelector] Tapped face thumbnail:', thumb.index);
+                      setSelectedFace(thumb.index);
                     }}
-                    activeOpacity={0.7}
+                    activeOpacity={0.75}
                   >
+                    <Image
+                      source={{ uri: thumb.uri }}
+                      style={styles.thumbImage}
+                      resizeMode="cover"
+                    />
                     {isSelected && (
-                      <View style={[styles.checkmark, { backgroundColor: colors.secondary }]}>
-                        <Text style={styles.checkmarkText}>✓</Text>
+                      <View style={styles.checkBadge}>
+                        <Text style={styles.checkText}>✓</Text>
                       </View>
                     )}
+                    <Text style={styles.thumbLabel}>
+                      Volto {thumb.index + 1}
+                    </Text>
                   </TouchableOpacity>
                 );
               })}
-            </View>
-          </View>
+            </ScrollView>
+          )}
 
           <View style={styles.buttons}>
             <TouchableOpacity
-              style={[styles.button, styles.cancelButton, { backgroundColor: colors.textSecondary }]}
+              style={[styles.button, styles.cancelButton]}
               onPress={handleCancelPress}
+              activeOpacity={0.8}
             >
-              <Text style={[styles.buttonText, { color: colors.background }]}>
-                Annulla
-              </Text>
+              <Text style={styles.cancelButtonText}>Annulla</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[
                 styles.button,
                 styles.confirmButton,
-                { backgroundColor: selectedFace !== null ? colors.secondary : '#666' },
+                selectedFace === null && styles.confirmButtonDisabled,
               ]}
               onPress={handleConfirm}
               disabled={selectedFace === null}
+              activeOpacity={0.8}
             >
-              <Text style={[styles.buttonText, { color: colors.background }]}>
-                Conferma
+              <Text style={styles.confirmButtonText}>
+                {selectedFace !== null ? 'Conferma' : 'Seleziona un volto'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -214,76 +211,119 @@ export function FaceSelector({ visible, imageUri, faces, onSelectFace, onCancel 
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
   },
   content: {
-    borderRadius: 20,
-    padding: 20,
+    backgroundColor: colors.card,
+    borderRadius: 24,
+    padding: 24,
     width: '100%',
-    maxWidth: 500,
-    maxHeight: '90%',
+    maxWidth: 480,
   },
   title: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: 'bold',
-    marginBottom: 8,
+    color: colors.text,
     textAlign: 'center',
+    marginBottom: 6,
   },
   subtitle: {
-    fontSize: 16,
-    marginBottom: 20,
+    fontSize: 14,
+    color: colors.textSecondary,
     textAlign: 'center',
-    lineHeight: 22,
+    marginBottom: 24,
+    lineHeight: 20,
   },
-  imageContainer: {
+  loadingContainer: {
     alignItems: 'center',
-    marginBottom: 20,
+    paddingVertical: 32,
+    gap: 12,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  thumbnailsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: 4,
+    paddingBottom: 8,
+    minWidth: '100%',
+    justifyContent: 'center',
+  },
+  thumbWrapper: {
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 16,
+    padding: 6,
+    borderWidth: 3,
+    borderColor: 'transparent',
+    backgroundColor: colors.cardDark,
+  },
+  thumbWrapperSelected: {
+    borderColor: colors.secondary,
+    backgroundColor: 'rgba(252, 211, 77, 0.15)',
+  },
+  thumbImage: {
+    width: THUMB_SIZE,
+    height: THUMB_SIZE,
     borderRadius: 12,
-    overflow: 'hidden',
+    backgroundColor: colors.backgroundDark,
   },
-  faceBox: {
-    position: 'absolute',
-    borderRadius: 8,
-  },
-  checkmark: {
+  checkBadge: {
     position: 'absolute',
     top: 4,
     right: 4,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: colors.secondary,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  checkmarkText: {
-    color: '#fff',
-    fontSize: 18,
+  checkText: {
+    color: colors.background,
+    fontSize: 14,
     fontWeight: 'bold',
   },
-  loader: {
-    position: 'absolute',
-    top: '50%',
-    left: '50%',
-    marginLeft: -20,
-    marginTop: -20,
+  thumbLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
   },
   buttons: {
     flexDirection: 'row',
     gap: 12,
+    marginTop: 24,
   },
   button: {
     flex: 1,
     paddingVertical: 14,
-    borderRadius: 12,
+    borderRadius: 14,
     alignItems: 'center',
   },
-  cancelButton: {},
-  confirmButton: {},
-  buttonText: {
-    fontSize: 16,
+  cancelButton: {
+    backgroundColor: colors.cardDark,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+  },
+  cancelButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  confirmButton: {
+    backgroundColor: colors.secondary,
+  },
+  confirmButtonDisabled: {
+    backgroundColor: '#555',
+  },
+  confirmButtonText: {
+    fontSize: 15,
     fontWeight: 'bold',
+    color: colors.background,
   },
 });
