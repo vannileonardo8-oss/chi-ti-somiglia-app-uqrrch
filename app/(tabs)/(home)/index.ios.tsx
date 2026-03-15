@@ -139,8 +139,8 @@ async function detectFacesViaGemini(uri: string): Promise<FaceBox[]> {
   } catch (err) {
     console.warn('[Home] Face detection failed:', err);
   }
-  // Return empty to trigger "no face" error — caller handles fallback
-  return [];
+  // Fallback: return full-image box so user can confirm/crop
+  return [{ x: 5, y: 5, width: 90, height: 90 }];
 }
 
 async function cropToFace(uri: string, face: FaceBox): Promise<string> {
@@ -310,10 +310,16 @@ export default function HomeScreen() {
       if (faces.length === 0) {
         showError("Nessun volto rilevato, riprova con un'altra foto");
       } else if (faces.length === 1) {
-        // Single real face — auto-select and crop
-        console.log('[Home] Auto-selecting single detected face for slot:', slotKey);
-        const croppedUri = await cropToFace(uri, faces[0]);
-        applyUri(slotKey, croppedUri);
+        const isFallback = faces[0].x === 5 && faces[0].width === 90;
+        if (isFallback) {
+          // Fallback full-image box — show selector so user can confirm/crop
+          setPendingFace({ slotKey, uri, faces });
+        } else {
+          // Real single face — auto-select and crop
+          console.log('[Home] Auto-selecting single detected face for slot:', slotKey);
+          const croppedUri = await cropToFace(uri, faces[0]);
+          applyUri(slotKey, croppedUri);
+        }
       } else {
         // Multiple faces — show selector
         setPendingFace({ slotKey, uri, faces });
