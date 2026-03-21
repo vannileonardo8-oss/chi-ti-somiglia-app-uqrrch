@@ -335,11 +335,9 @@ export default function HomeScreen() {
     else { setComp2Uri(uri); setComp2Ready(true); }
   };
 
-  const handleFaceSelected = async (faceIndex: number) => {
+  const handleFaceConfirmed = (croppedUri: string) => {
     if (!pendingFace) return;
-    console.log('[Home] Face selected index:', faceIndex, 'for slot:', pendingFace.slotKey);
-    const face = pendingFace.faces[faceIndex];
-    const croppedUri = await cropToFace(pendingFace.uri, face);
+    console.log('[Home] Face confirmed, cropped URI received for slot:', pendingFace.slotKey);
     applyUri(pendingFace.slotKey, croppedUri);
     setPendingFace(null);
   };
@@ -561,7 +559,7 @@ export default function HomeScreen() {
             visible={!!pendingFace}
             imageUri={pendingFace.uri}
             faces={pendingFace.faces}
-            onSelectFace={handleFaceSelected}
+            onConfirm={handleFaceConfirmed}
             onCancel={handleFaceSelectorCancel}
           />
         )}

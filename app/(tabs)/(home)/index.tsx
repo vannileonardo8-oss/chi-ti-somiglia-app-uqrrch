@@ -118,8 +118,9 @@ async function pickFromCamera(): Promise<string | null> {
 }
 
 /**
- * Sends the image to Gemini via the compare edge function to detect faces.
- * Returns bounding boxes as percentages (0–100) of image dimensions.
+ * Sends the image to Gemini via the detect-faces edge function.
+ * Returns bounding boxes in actual image pixel coordinates.
+ * Returns [] if no faces are detected or on error.
  */
 async function detectFacesViaGemini(uri: string): Promise<FaceBox[]> {
   console.log('[Home] Detecting faces via Gemini for:', uri);
@@ -146,46 +147,14 @@ async function detectFacesViaGemini(uri: string): Promise<FaceBox[]> {
       if (Array.isArray(data.faces) && data.faces.length > 0) {
         return data.faces as FaceBox[];
       }
+      console.log('[Home] No faces returned by edge function');
     } else {
-      console.warn('[Home] Face detection endpoint not available, status:', response.status);
+      console.warn('[Home] Face detection endpoint error, status:', response.status);
     }
   } catch (err) {
     console.warn('[Home] Face detection failed:', err);
   }
-  // Return a single "full-image" face as fallback (treat whole image as one face)
-  return [{ x: 5, y: 5, width: 90, height: 90 }];
-}
-
-/**
- * Crops the image to the selected face bounding box (percentages 0–100).
- */
-async function cropToFace(uri: string, face: FaceBox): Promise<string> {
-  console.log('[Home] Cropping image to face:', face);
-  try {
-    // First get image dimensions
-    const info = await ImageManipulator.manipulateAsync(uri, [], {
-      format: ImageManipulator.SaveFormat.JPEG,
-    });
-    // We need actual pixel dimensions — manipulate with no ops returns them
-    const imgWidth = info.width;
-    const imgHeight = info.height;
-
-    const originX = Math.round((face.x / 100) * imgWidth);
-    const originY = Math.round((face.y / 100) * imgHeight);
-    const cropWidth = Math.round((face.width / 100) * imgWidth);
-    const cropHeight = Math.round((face.height / 100) * imgHeight);
-
-    const cropped = await ImageManipulator.manipulateAsync(
-      uri,
-      [{ crop: { originX, originY, width: cropWidth, height: cropHeight } }],
-      { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG }
-    );
-    console.log('[Home] Cropped face URI:', cropped.uri);
-    return cropped.uri;
-  } catch (err) {
-    console.warn('[Home] Crop failed, using original:', err);
-    return uri;
-  }
+  return [];
 }
 
 // ─── Source Picker Modal ──────────────────────────────────────────────────────
@@ -437,22 +406,11 @@ export default function HomeScreen() {
       console.log('[Home] Faces detected:', faces.length, 'for slot:', slotKey);
 
       if (faces.length === 0) {
-        // No faces — show error, discard photo
-        showError('Nessun volto rilevato, riprova con un\'altra foto');
-      } else if (faces.length === 1) {
-        // Exactly one face — check if it's the fallback full-image box
-        const isFallback = faces[0].x === 5 && faces[0].width === 90;
-        if (isFallback) {
-          // Fallback: show selector so user can confirm
-          setPendingFace({ slotKey, uri, faces });
-        } else {
-          // Real single face — auto-select and crop
-          console.log('[Home] Auto-selecting single detected face for slot:', slotKey);
-          const croppedUri = await cropToFace(uri, faces[0]);
-          applyUri(slotKey, croppedUri);
-        }
+        console.log('[Home] No faces detected, showing alert for slot:', slotKey);
+        showError("Nessun volto rilevato, riprova con un'altra foto");
       } else {
-        // Multiple faces — show selector
+        // 1 or more faces — open FaceSelector (auto-selects if exactly 1)
+        console.log('[Home] Opening FaceSelector with', faces.length, 'face(s) for slot:', slotKey);
         setPendingFace({ slotKey, uri, faces });
       }
     } finally {
@@ -466,11 +424,9 @@ export default function HomeScreen() {
     else { setComp2Uri(uri); setComp2Ready(true); }
   };
 
-  const handleFaceSelected = async (faceIndex: number) => {
+  const handleFaceConfirmed = (croppedUri: string) => {
     if (!pendingFace) return;
-    console.log('[Home] Face selected index:', faceIndex, 'for slot:', pendingFace.slotKey);
-    const face = pendingFace.faces[faceIndex];
-    const croppedUri = await cropToFace(pendingFace.uri, face);
+    console.log('[Home] Face confirmed, cropped URI received for slot:', pendingFace.slotKey);
     applyUri(pendingFace.slotKey, croppedUri);
     setPendingFace(null);
   };
@@ -707,10 +663,9 @@ export default function HomeScreen() {
         {/* Face Selector */}
         {pendingFace && (
           <FaceSelector
-            visible={!!pendingFace}
             imageUri={pendingFace.uri}
             faces={pendingFace.faces}
-            onSelectFace={handleFaceSelected}
+            onConfirm={handleFaceConfirmed}
             onCancel={handleFaceSelectorCancel}
           />
         )}
