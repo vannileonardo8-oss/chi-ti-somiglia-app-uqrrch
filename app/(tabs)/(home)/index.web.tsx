@@ -368,6 +368,10 @@ export default function HomeScreen() {
   const [comp1Uri, setComp1Uri] = useState<string | null>(null);
   const [comp2Uri, setComp2Uri] = useState<string | null>(null);
 
+  const [mainReady, setMainReady] = useState(false);
+  const [comp1Ready, setComp1Ready] = useState(false);
+  const [comp2Ready, setComp2Ready] = useState(false);
+
   const [mainName, setMainName] = useState('');
   const [comp1Name, setComp1Name] = useState('');
   const [comp2Name, setComp2Name] = useState('');
@@ -413,13 +417,26 @@ export default function HomeScreen() {
       const faces = await detectFacesViaGemini(uri);
       console.log('[Home] Faces detected:', faces.length, 'for slot:', slotKey);
 
-      if (faces.length <= 1) {
-        const finalUri =
-          faces.length === 1 && !(faces[0].x === 5 && faces[0].width === 90)
-            ? await cropToFace(uri, faces[0])
-            : uri;
-        applyUri(slotKey, finalUri);
+      if (faces.length === 0) {
+        showError("Nessun volto rilevato, riprova con un'altra foto");
+        return;
+      }
+
+      if (faces.length === 1) {
+        const isFallback = faces[0].x === 5 && faces[0].width === 90;
+        if (isFallback) {
+          // Fallback full-image box — show selector (auto-selected) so user can confirm
+          console.log('[Home] Fallback face box — showing selector for confirmation, slot:', slotKey);
+          setPendingFace({ slotKey, uri, faces });
+        } else {
+          // Real single face — auto-crop silently, no selector needed
+          console.log('[Home] Auto-selecting single detected face for slot:', slotKey);
+          const croppedUri = await cropToFace(uri, faces[0]);
+          applyUri(slotKey, croppedUri);
+        }
       } else {
+        // Multiple faces — user must pick one
+        console.log('[Home] Multiple faces detected, showing selector for slot:', slotKey);
         setPendingFace({ slotKey, uri, faces });
       }
     } finally {
@@ -428,9 +445,9 @@ export default function HomeScreen() {
   };
 
   const applyUri = (slotKey: 'main' | 'comp1' | 'comp2', uri: string) => {
-    if (slotKey === 'main') setMainUri(uri);
-    else if (slotKey === 'comp1') setComp1Uri(uri);
-    else setComp2Uri(uri);
+    if (slotKey === 'main') { setMainUri(uri); setMainReady(true); }
+    else if (slotKey === 'comp1') { setComp1Uri(uri); setComp1Ready(true); }
+    else { setComp2Uri(uri); setComp2Ready(true); }
   };
 
   const handleFaceSelected = async (faceIndex: number) => {
@@ -443,10 +460,8 @@ export default function HomeScreen() {
   };
 
   const handleFaceSelectorCancel = () => {
-    console.log('[Home] Face selector cancelled');
-    if (pendingFace) {
-      applyUri(pendingFace.slotKey, pendingFace.uri);
-    }
+    console.log('[Home] Face selector cancelled — discarding photo');
+    // Do NOT apply the image — user must select a face or cancel entirely
     setPendingFace(null);
   };
 
@@ -491,7 +506,7 @@ export default function HomeScreen() {
     }
   };
 
-  const canAnalyze = !!mainUri && !!comp1Uri && !!comp2Uri && !isAnalyzing && !detectingFaces;
+  const canAnalyze = mainReady && comp1Ready && comp2Ready && !isAnalyzing && !detectingFaces;
 
   const winner1 = result ? result.winner === 1 : undefined;
   const winner2 = result ? result.winner === 2 : undefined;

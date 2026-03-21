@@ -853,6 +853,21 @@ const styles = StyleSheet.create({
     padding: 6,
   },
 
+  // Ready badge
+  readyBadge: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.success,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    gap: 4,
+  },
+  readyBadgeText: { fontSize: 11, fontWeight: 'bold', color: '#fff' },
+
   // Name input
   nameInput: {
     backgroundColor: colors.card,

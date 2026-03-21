@@ -79,7 +79,12 @@ export function FaceSelector({ visible, imageUri, faces, onSelectFace, onCancel 
   useEffect(() => {
     if (!visible || !imageUri || faces.length === 0) return;
 
-    setSelectedFace(null);
+    // Auto-select when there is exactly one face
+    const autoSelect = faces.length === 1 ? 0 : null;
+    setSelectedFace(autoSelect);
+    if (autoSelect !== null) {
+      console.log('[FaceSelector] Auto-selecting single face (index 0)');
+    }
     setThumbnails([]);
     setLoading(true);
 
